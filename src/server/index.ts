@@ -35,6 +35,7 @@ export interface StartOptions {
   openBrowser?: boolean;
   daemon?: boolean;
   handleSignals?: boolean;
+  openUrl?: (url: string) => Promise<unknown>;
 }
 
 export function pairingUrl(config: SecureInputConfig): string {
@@ -99,10 +100,21 @@ export async function startServer(options: StartOptions): Promise<StartedServer>
   logger.info(`${APP_NAME} ${APP_VERSION} listening on ${url}`);
   logger.info(`Pairing URL written for the browser (contains a token; do not share).`);
 
-  if (options.openBrowser !== false && config.openBrowser && process.env.SECUREINPUT_NO_OPEN !== "1") {
-    void open(pairUrl).catch(() => {
+  const autoOpen = options.openBrowser !== false && config.openBrowser && process.env.SECUREINPUT_NO_OPEN !== "1";
+  const openUrl = options.openUrl ?? open;
+  if (autoOpen) {
+    void openUrl(pairUrl).catch(() => {
       logger.warn("Could not open the browser automatically. Run `secureinput pair`.");
     });
+    // Do not put the pairing token or request data in a URL returned to the agent.
+    // The already-paired browser receives request details through the local UI.
+    const unsubscribe = bus.subscribe((event) => {
+      if (event.type !== "request.created") return;
+      void openUrl(url).catch(() => {
+        logger.warn("Could not open the browser for a request. Open the local SecureInput page or run `secureinput pair`.");
+      });
+    });
+    server.once("close", unsubscribe);
   }
 
   let closing = false;

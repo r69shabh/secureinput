@@ -41,7 +41,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 
 - **MCP-native** — one tool, `request_secret`, plus polling, cancellation, and status tools.
 - **Local only** — binds to `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
-- **No secret in chat** — the agent receives request status and redacted stdout/stderr.
+- **No secret in chat by default** — the agent receives request status and best-effort redacted stdout/stderr.
 - **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
 - **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env` and `.env.*` only.
 - **Human approval** — the UI shows which agent, working directory, command, file, and keys are involved, with extra confirmation for risky destinations.
@@ -74,7 +74,7 @@ Start the daemon and pair your browser:
 secureinput serve
 ```
 
-The pairing URL opens automatically. If it does not, run:
+The pairing URL opens automatically. Each new request also opens the local page, if automatic opening is enabled. If pairing does not open, run:
 
 ```bash
 secureinput pair
@@ -337,7 +337,7 @@ SecureInput is built for the local-desktop threat model, not for hostile multi-u
 - One-time request claim, per-request TTL, pending caps, and rate limits.
 - Constant-time token comparison and pairing rate limiting.
 - RE2 validation patterns, which avoid regex denial-of-service.
-- Secrets never appear in URLs, argv, logs, audit records, or error messages.
+- Submitted field values are not deliberately put in URLs, argv, logs, audit records, or error messages. The initial pairing URL contains a separate pairing token; keep it private.
 - Output redaction covers raw, JSON-escaped, URL-encoded, and base64 forms of each secret, plus common token formats.
 - Command execution with `shell: false`; timeout kills the process group.
 - Env writes are atomic, `0600`, symlink-safe, and confined to allowed roots.
@@ -347,6 +347,7 @@ SecureInput is built for the local-desktop threat model, not for hostile multi-u
 **Outside the boundary**
 
 - A command you approve can exfiltrate the secret. Reviewing the exact command and destination is the final control.
+- An agent with filesystem or terminal access may be able to read a `.env` file after it is written, or run commands that read it. Use `execute` with stdin when you do not want a persistent file.
 - Same-user malware, root, a compromised browser, a malicious extension, or a keylogger can read anything you type. SecureInput does not claim to stop them.
 - Environment variables can be visible to other processes running as the same user on some systems. Prefer stdin when the command supports it.
 - Redaction is best-effort for transformed secrets (hashed, split, encrypted, or re-encoded output).
@@ -432,7 +433,10 @@ The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are
 ## FAQ
 
 **Does the coding agent see my API key?**
-No, by default. It sees the request status, destination summary, exit code, and redacted output. Only `return` mode gives it the value, and that mode is off unless you start the daemon with `--allow-return`.
+The MCP result does not intentionally return it by default. The agent sees status, destination summary, exit code, and best-effort redacted output. A command may transform or expose a value in ways redaction misses, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
+
+**Can I enter a secret inside the agent chat?**
+Not yet. The current form runs in a local browser. Some MCP hosts support interactive apps, but their UI-to-server calls pass through the host and may be logged. An embedded secret form needs a separately reviewed delivery mechanism before it can offer the same privacy goal. Support also depends on the host and whether it can reach a local MCP server.
 
 **Where are secrets stored?**
 Nowhere persistent. Pending requests and submitted values live in memory and are cleared after delivery. The one exception is `write_env`, which intentionally writes the value to the `.env` file you approved. Completed request metadata is kept in memory for 10 minutes, and only metadata is written to the audit log.

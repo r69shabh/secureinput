@@ -19,6 +19,29 @@ const executeBody = (command: string, args: string[], stdin: string) => ({
   waitSeconds: 0,
 });
 
+test("requests open the paired local UI without putting tokens or request data in the URL", async () => {
+  const opened: string[] = [];
+  const testServer = await startTestServer({ openBrowser: true, openUrl: async (url) => { opened.push(url); } });
+  try {
+    assert.equal(opened[0], `${testServer.base}/#pair=${testServer.config.pairingToken}`);
+    await createWithAgent(testServer, executeBody(process.execPath, [], "{{token}}"));
+    assert.deepEqual(opened.slice(1), [`${testServer.base}/`]);
+  } finally {
+    await testServer.close();
+  }
+});
+
+test("disabled browser opening also applies to new requests", async () => {
+  const opened: string[] = [];
+  const testServer = await startTestServer({ openUrl: async (url) => { opened.push(url); } });
+  try {
+    await createWithAgent(testServer, executeBody(process.execPath, [], "{{token}}"));
+    assert.deepEqual(opened, []);
+  } finally {
+    await testServer.close();
+  }
+});
+
 test("execute flow delivers stdin, redacts output, and is one-time", async () => {
   const testServer = await startTestServer();
   try {
