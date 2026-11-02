@@ -74,7 +74,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
   const inlineEnabled = inlineHtml !== undefined;
   if (inlineEnabled) {
     registerAppResource(server, "SecureInput", INLINE_RESOURCE_URI, {}, async () => ({ contents: [{
-      uri: INLINE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: inlineHtml!,
+      uri: INLINE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: readInlineHtml(),
       _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false } },
     }] }));
     registerAppTool(server, "submit_inline_secret", {

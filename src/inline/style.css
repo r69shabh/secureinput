@@ -1,16 +1,21 @@
-:root { color-scheme: light; font: 14px/1.4 var(--font-sans, system-ui, sans-serif); color: var(--color-text-primary, CanvasText); }
-html, body, #root { margin: 0; padding: 0; min-height: 0; width: 100%; background: transparent; }
+:root { color-scheme: light; font: 14px/1.5 var(--font-sans, system-ui, sans-serif); color: var(--color-text-primary, CanvasText); --input-border: #d4d4d8; --input-muted: #71717a; }
+:root[data-theme="dark"] { --input-border: #3f3f46; --input-muted: #a1a1aa; }
+html, body, #root { margin: 0; padding: 0; min-height: 0; height: auto; width: 100%; background: transparent; }
 * { box-sizing: border-box; }
-.secure-input { width: 100%; padding: 0; }
+.secure-input { width: 100%; max-width: 480px; padding: 10px 4px; }
 form { margin: 0; }
-.field + .field { margin-top: 12px; }
-label { display: block; margin-bottom: 6px; font-weight: 500; overflow-wrap: anywhere; }
-.input-row { display: flex; align-items: center; gap: 8px; }
-input, button { height: 40px; font: inherit; border: 1px solid var(--color-border-primary, #888); border-radius: 6px; }
-input { flex: 1; min-width: 0; width: 100%; padding: 8px 10px; color: inherit; background: var(--color-background-primary, Canvas); caret-color: currentColor; }
+.field + .field { margin-top: 14px; }
+label { display: block; margin-bottom: 8px; font-weight: 500; overflow-wrap: anywhere; }
+.input-row { display: flex; align-items: center; gap: 10px; }
+.input-wrap { position: relative; flex: 1; min-width: 0; }
+input, button { height: 44px; font: inherit; border: 1px solid var(--color-border-primary, var(--input-border)); box-shadow: 0 1px 2px rgb(0 0 0 / .04); }
+input { display: block; width: 100%; padding: 10px 14px; border-radius: 12px; color: inherit; background: var(--color-background-primary, Canvas); caret-color: currentColor; }
 input::selection { background: Highlight; color: HighlightText; }
-button { flex: none; padding: 0 16px; font-weight: 500; cursor: pointer; color: var(--color-background-primary, Canvas); background: var(--color-text-primary, CanvasText); border-color: transparent; }
+button { flex: none; min-width: 76px; padding: 0 18px; border-radius: 10px; font-weight: 500; cursor: pointer; color: var(--color-background-primary, Canvas); background: var(--color-text-primary, CanvasText); border-color: transparent; }
 button:hover:not(:disabled) { opacity: .85; }
 button:disabled { cursor: default; opacity: .6; }
+input:disabled { opacity: .75; }
 input:focus-visible, button:focus-visible { outline: 2px solid var(--color-text-primary, Highlight); outline-offset: 2px; }
-p[role="alert"] { color: var(--color-text-danger, #b42318); margin: 6px 0 0; font-size: 12px; }
+.success-check { position: absolute; right: 13px; top: 12px; width: 20px; height: 20px; color: var(--color-text-success, #16a34a); pointer-events: none; }
+.delivery-time { color: var(--color-text-secondary, var(--input-muted)); margin: 7px 0 0; font-size: 12px; }
+p[role="alert"] { color: var(--color-text-danger, #b42318); margin: 7px 0 0; font-size: 12px; }
