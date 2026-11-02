@@ -26,10 +26,10 @@ export interface TestServer {
   close: () => Promise<void>;
 }
 
-export async function startTestServer(options: { openBrowser?: boolean; openUrl?: (url: string) => Promise<unknown> } = {}): Promise<TestServer> {
+export async function startTestServer(options: { inputMode?: "browser" | "inline"; audit?: boolean; openBrowser?: boolean; openUrl?: (url: string) => Promise<unknown> } = {}): Promise<TestServer> {
   const home = await mkdtemp(path.join(tmpdir(), "secureinput-test-"));
   const port = await freePort();
-  const config = loadConfig({ home, port, roots: [home], openBrowser: options.openBrowser ?? false, audit: false });
+  const config = loadConfig({ home, port, roots: [home], inputMode: options.inputMode, openBrowser: options.openBrowser ?? false, audit: options.audit ?? false });
   const started = await startServer({
     config,
     webDir: path.join(home, "missing-web"),

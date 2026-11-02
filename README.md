@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml/badge.svg)](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml)
 
-**Stop pasting API keys, passwords, and tokens into your coding agent's chat.** SecureInput is a local-first MCP server with a small browser input box. The agent asks for a secret, you type it into a page on your own machine, and SecureInput delivers it straight to the command or `.env` file you approved. The agent gets status and redacted output, not the secret.
+**Stop pasting API keys, passwords, and tokens into your coding agent's chat.** SecureInput is a local-first MCP server with a small browser input box. The agent asks for a secret, you type it into a page on your own machine, and SecureInput delivers it straight to the command or `.env` file you approved. The agent gets status and exit details; command output stays in the local browser.
 
 Works with Claude Code, Cursor, Codex CLI, VS Code / GitHub Copilot, Windsurf, Cline, and any other MCP client. macOS, Linux, and Node.js 22+.
 
@@ -21,7 +21,7 @@ agent: "I need a GitHub token to create the repo."
         └── write_env: .env.local                 (atomic, 0600)
         │
         ▼
-agent: { "ok": true, "status": "completed", "stdout": "[REDACTED]" }
+agent: { "ok": true, "status": "completed", "exitCode": 0 }
 ```
 
 ## Why this exists
@@ -41,7 +41,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 
 - **MCP-native** — one tool, `request_secret`, plus polling, cancellation, and status tools.
 - **Local only** — binds to `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
-- **No secret in chat by default** — the agent receives request status and best-effort redacted stdout/stderr.
+- **No secret in chat by default** — the agent receives request status and exit details. stdout/stderr are withheld from MCP results.
 - **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
 - **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env` and `.env.*` only.
 - **Human approval** — the UI shows which agent, working directory, command, file, and keys are involved, with extra confirmation for risky destinations.
@@ -74,7 +74,7 @@ Start the daemon and pair your browser:
 secureinput serve
 ```
 
-The pairing URL opens automatically. Each new request also opens the local page, if automatic opening is enabled. If pairing does not open, run:
+The pairing URL opens automatically. Each new browser-mode request also opens the local page, if automatic opening is enabled. If pairing does not open, run:
 
 ```bash
 secureinput pair
@@ -90,6 +90,30 @@ secureinput doctor
 The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinput/` with mode `0600`.
 
 > `npm link` is just for local use. `npm install -g .` or an absolute path to `dist/cli/index.js` works too.
+
+## Browser or inline input
+
+Browser input is the default. To opt into encrypted inline input:
+
+```bash
+secureinput settings --input-mode inline
+secureinput stop
+```
+
+Reconnect your MCP clients; the next bridge starts the daemon with the saved setting. Alternatively start it explicitly with `secureinput serve --input-mode inline`. To restore browser input, use `secureinput settings --input-mode browser`, then restart and reconnect.
+
+Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form encrypts values, required confirmations and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
+
+The inline widget needs no direct network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys. The local browser retains a stronger boundary from the chat host. Neither mode sandboxes an approved command's filesystem or network access, and no “never trained” claim follows from merely using terminal commands.
+
+For a synthetic local test of the actual widget and terminal-to-env flow:
+
+```bash
+npm run build
+npm run demo:host
+```
+
+Open the printed loopback URL. Enter a fake key, review the command, and submit. The reference host renders the real MCP App inside a restricted iframe; the approved Node command writes `.env.inline-demo` with mode `0600` in an isolated temporary directory. This reference host is a test fixture, not proof that a particular chat product supports inline apps. Use real credentials only in a separately evaluated host.
 
 ## Connect your coding agent
 
@@ -260,7 +284,8 @@ Returns daemon policy version, allowed roots, return-mode state, and pending req
 - Secret fields can appear in `stdin` or `env` values as `{{fieldId}}`. They cannot appear in `command` or `args`, so they never show up in the process list.
 - Non-sensitive `text` fields may be used in `args` for things like usernames.
 - At least one secret reference must go through `stdin` or `env`.
-- stdout and stderr are ANSI-stripped, size-capped, and redacted before the agent sees them.
+- stdout and stderr are withheld from the agent. The paired local browser can show size-capped, best-effort redacted output.
+- Child processes receive basic OS variables (such as PATH, HOME and temporary-directory settings), fixed terminal settings, and the explicit delivery env mapping. Other daemon environment variables are not inherited.
 - The process group is terminated on timeout.
 - Commands must be non-interactive. TTY-only login flows are not supported; use the tool's token/non-interactive mode instead.
 
@@ -311,7 +336,7 @@ A completed `execute` request looks like this:
       "message": "Command completed successfully.",
       "execution": {
         "exitCode": 0,
-        "stdout": "[REDACTED]",
+        "exitCode": 0,
         "stderr": "",
         "timedOut": false,
         "durationMs": 842
@@ -433,13 +458,13 @@ The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are
 ## FAQ
 
 **Does the coding agent see my API key?**
-The MCP result does not intentionally return it by default. The agent sees status, destination summary, exit code, and best-effort redacted output. A command may transform or expose a value in ways redaction misses, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
+The MCP result does not intentionally return it by default. The agent sees status, destination summary and exit details; stdout/stderr stay local. An approved command can still write or transmit values, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
 
 **Can I enter a secret inside the agent chat?**
-Not yet. The current form runs in a local browser. Some MCP hosts support interactive apps, but their UI-to-server calls pass through the host and may be logged. An embedded secret form needs a separately reviewed delivery mechanism before it can offer the same privacy goal. Support also depends on the host and whether it can reach a local MCP server.
+Yes, with the opt-in inline preference and a compatible MCP Apps host. The widget encrypts its submission before passing it through the host to the local daemon. It uses the same command/env-file delivery and confirmation rules as the browser. The host still controls rendering and widget metadata, so use inline input only in a host you trust. See the input-mode settings below. This is not a claim of compatibility with every chat client.
 
 **Where are secrets stored?**
-Nowhere persistent. Pending requests and submitted values live in memory and are cleared after delivery. The one exception is `write_env`, which intentionally writes the value to the `.env` file you approved. Completed request metadata is kept in memory for 10 minutes, and only metadata is written to the audit log.
+SecureInput keeps pending requests and submitted values in process memory and drops references after delivery; JavaScript memory is not guaranteed to be zeroized. `write_env` intentionally writes plaintext to the `.env` file you approve. Commands may also persist credentials themselves. Completed request metadata is kept in memory for 10 minutes, and only metadata is written to the audit log.
 
 **Does it work with Claude Code?**
 Yes. Run `claude mcp add secureinput -- secureinput mcp`. The same stdio bridge works with Cursor, Codex CLI, VS Code Copilot, Cline, Windsurf, and other MCP clients.
@@ -451,7 +476,7 @@ Yes. Add the `mcpServers` entry shown above to Cursor's MCP config.
 A password manager is great for humans, but it is not an MCP delivery path. SecureInput focuses on getting a secret into a specific command or env file with an auditable destination, without an agent API key.
 
 **Can the agent read my whole environment?**
-A command you approve inherits the daemon's environment plus the values you supply. That is why the UI shows the exact command and why high-risk commands need a confirmation. Use the smallest credential and the narrowest scope you can.
+A command receives a small set of OS environment variables plus the values explicitly supplied in the delivery mapping. It still runs with your OS user's permissions and may read files or credential stores. That is why the UI shows the exact command and why high-risk commands need a confirmation. Use the smallest credential and the narrowest scope you can.
 
 **What happens if the daemon restarts?**
 Pending requests and completed results are lost. The agent will receive a "request not found" error and can create a new request. This is deliberate: no secret vault, no stale credentials.

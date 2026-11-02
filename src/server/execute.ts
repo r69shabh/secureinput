@@ -32,10 +32,12 @@ export async function executeDelivery(delivery: ExecuteDelivery, options: Execut
   const args = delivery.args.map((arg) => renderTemplate(arg, options.values));
   const stdin = delivery.stdin !== undefined ? renderTemplate(delivery.stdin, options.values) : undefined;
   const childEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    // Keep basic executable/OS support, without forwarding unrelated credentials or runtime injection options.
+    ...Object.fromEntries(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "PATHEXT", "LANG", "LC_ALL"]
+      .filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]])),
     NO_COLOR: "1",
     TERM: "dumb",
-    CI: process.env.CI ?? "1",
+    CI: "1",
   };
   for (const [key, template] of Object.entries(delivery.env ?? {})) {
     childEnv[key] = renderTemplate(template, options.values);
@@ -86,7 +88,7 @@ export async function executeDelivery(delivery: ExecuteDelivery, options: Execut
       const ok = !spawnError && !timedOut && exitCode === 0;
       let message = ok ? "Command completed successfully." : `Command exited with code ${exitCode ?? "unknown"}.`;
       if (timedOut) message = `Command timed out after ${options.timeoutSeconds}s and was stopped.`;
-      if (spawnError) message = `Could not start the command: ${spawnError.message}`;
+      if (spawnError) message = `Could not start the command: ${sanitizeOutput(spawnError.message, secrets)}`;
       if (truncated) message += " Output was truncated.";
       resolve({ ok, status: ok ? "completed" : "failed", message, execution });
     };

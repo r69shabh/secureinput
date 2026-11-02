@@ -16,6 +16,7 @@ import type {
   ServerPolicyInfo,
 } from "../shared/types";
 import { validateFieldValues } from "../shared/validation";
+import { sanitizeOutput } from "../shared/redaction";
 import type { AuditLog } from "./audit";
 import { RateLimiter } from "./auth";
 import type { SecureInputConfig } from "./config";
@@ -25,11 +26,15 @@ import { PolicyError, resolveCommandCwd, resolveEnvPath, type Policy } from "./p
 import { assessRisk } from "./risk";
 import { buildDeliverySummary } from "./summary";
 import { writeEnvDelivery } from "./write-env";
+import { createInlineKeys, decryptInlineSubmission, type InlineKeys } from "./inline";
+import type { InlineEnvelope, InlineGrant } from "../shared/inline";
 
 const RESULT_RETENTION_MS = 10 * 60_000;
 const HISTORY_LIMIT = 50;
 
 interface InternalRequest {
+  inlineKeys?: InlineKeys;
+  inlineAttempts?: number;
   id: string;
   input: RequestSecretInput;
   delivery: Delivery;
@@ -77,6 +82,7 @@ export class SecureInputService {
 
   policyInfo(): ServerPolicyInfo {
     return {
+      inputMode: this.options.config.inputMode,
       allowReturn: this.options.policy.allowReturn,
       allowShell: false,
       allowedRoots: this.options.policy.roots,
@@ -124,7 +130,10 @@ export class SecureInputService {
     return this.agentView(request);
   }
 
-  create(input: RequestSecretInput, source: RequestSource): CreateResult {
+  create(input: RequestSecretInput, source: RequestSource, inline = false): CreateResult {
+    if (inline && (this.options.config.inputMode !== "inline" || input.delivery.mode === "return")) {
+      throw new ServiceError("inline_unavailable", "Inline input is disabled or unsupported for this delivery. Use the local browser.");
+    }
     if (input.delivery.mode === "return" && !this.options.policy.allowReturn) {
       throw new ServiceError(
         "return_mode_disabled",
@@ -213,6 +222,7 @@ export class SecureInputService {
     );
     const id = `req_${randomBytes(16).toString("base64url")}`;
     const publicRequest: PublicSecretRequest = {
+      inputMode: inline ? "inline" : "browser",
       id,
       title: input.title,
       description: input.description,
@@ -250,6 +260,41 @@ export class SecureInputService {
     });
     this.options.bus.emit({ type: "request.created", request: this.publicView(internal) });
     return { request: this.publicView(internal) };
+  }
+
+  async prepareInline(requestId: string): Promise<InlineGrant> {
+    const request = this.require(requestId);
+    if (request.public.inputMode !== "inline" || request.public.status !== "pending" || request.inlineKeys) {
+      throw new ServiceError("inline_unavailable", "Inline input is not available for this request.");
+    }
+    const keys = await createInlineKeys();
+    if (request.public.status !== "pending" || request.public.expiresAt <= this.now()) {
+      throw new ServiceError("inline_unavailable", "This request is no longer pending.");
+    }
+    request.inlineKeys = keys;
+    return keys.grant;
+  }
+
+  submitInline(envelope: InlineEnvelope): PublicSecretRequest {
+    const request = this.require(envelope.requestId);
+    if (!request.inlineKeys || request.public.status !== "pending" || request.public.expiresAt <= this.now()) {
+      throw new ServiceError("inline_unavailable", "Inline input is no longer available. Check the request status.");
+    }
+    if ((request.inlineAttempts ?? 0) >= 10) {
+      throw new ServiceError("rate_limited", "Too many inline attempts. Finish in the local browser or create a new request.");
+    }
+    request.inlineAttempts = (request.inlineAttempts ?? 0) + 1;
+    let submission;
+    try {
+      submission = decryptInlineSubmission(request.inlineKeys, envelope);
+    } catch {
+      throw new ServiceError("invalid_inline_submission", "Could not verify the encrypted submission. Retry or use the local browser.");
+    }
+    try {
+      return submission.action === "deny" ? this.deny(envelope.requestId) : this.submit(envelope.requestId, submission.values, submission.confirmations);
+    } finally {
+      for (const key of Object.keys(submission.values)) delete submission.values[key];
+    }
   }
 
   submit(requestId: string, rawValues: Record<string, string>, confirmations?: {
@@ -290,6 +335,7 @@ export class SecureInputService {
     }
 
     request.public.status = "executing";
+    request.inlineKeys = undefined;
     request.public.claimedAt = this.now();
     this.options.audit.append({
       ts: new Date().toISOString(),
@@ -352,7 +398,7 @@ export class SecureInputService {
       }
       this.finish(request, result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Delivery failed.";
+      const message = sanitizeOutput(error instanceof Error ? error.message : "Delivery failed.", Object.values(values));
       this.finish(request, { ok: false, status: "failed", message });
     } finally {
       for (const key of Object.keys(values)) delete values[key];
@@ -362,6 +408,7 @@ export class SecureInputService {
   private finish(request: InternalRequest, result: RequestResult): void {
     if (request.public.status !== "pending" && request.public.status !== "executing") return;
     request.result = result;
+    request.inlineKeys = undefined;
     request.public.status = result.status;
     request.public.completedAt = this.now();
     request.public.result = this.publicResult(result);
@@ -424,6 +471,11 @@ export class SecureInputService {
 
   private agentView(request: InternalRequest): AgentRequestResult {
     const response: AgentRequestResult = { request: this.publicView(request) };
+    if (response.request.result?.execution) {
+      response.request.result.execution.stdout = "";
+      response.request.result.execution.stderr = "";
+      response.request.result.execution.outputWithheld = true;
+    }
     if (request.result?.returned) response.returned = { ...request.result.returned };
     return response;
   }

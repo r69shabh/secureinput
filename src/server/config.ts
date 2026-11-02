@@ -15,6 +15,7 @@ const configFileSchema = z.object({
   allowReturn: z.boolean(),
   openBrowser: z.boolean(),
   audit: z.boolean(),
+  inputMode: z.enum(["browser", "inline"]).default("browser"),
 });
 
 export type SecureInputConfigFile = z.infer<typeof configFileSchema>;
@@ -35,6 +36,7 @@ export interface ConfigOverrides {
   allowReturn?: boolean;
   openBrowser?: boolean;
   audit?: boolean;
+  inputMode?: "browser" | "inline";
 }
 
 export function resolveHome(override?: string): string {
@@ -85,6 +87,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): SecureInputConfig {
       allowReturn: overrides.allowReturn ?? false,
       openBrowser: overrides.openBrowser ?? true,
       audit: overrides.audit ?? true,
+      inputMode: overrides.inputMode ?? "browser",
     };
     saveConfigFile(configPath, file);
   }
@@ -116,8 +119,12 @@ export function loadConfig(overrides: ConfigOverrides = {}): SecureInputConfig {
     config.audit = overrides.audit;
     file.audit = overrides.audit;
   }
+  if (overrides.inputMode !== undefined) {
+    config.inputMode = overrides.inputMode;
+    file.inputMode = overrides.inputMode;
+  }
 
-  if (overrides.roots?.length || overrides.allowReturn !== undefined || overrides.openBrowser !== undefined || overrides.audit !== undefined) {
+  if (overrides.roots?.length || overrides.allowReturn !== undefined || overrides.openBrowser !== undefined || overrides.audit !== undefined || overrides.inputMode !== undefined) {
     saveConfigFile(configPath, file);
   }
 

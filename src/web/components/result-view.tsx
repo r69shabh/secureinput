@@ -67,11 +67,11 @@ export function ResultView({ request }: { request: PublicSecretRequest }) {
               </div>
             ) : null}
             {!result.execution.stdout && !result.execution.stderr ? (
-              <p className="text-xs text-muted-foreground">The command produced no output.</p>
+              <p className="text-xs text-muted-foreground">{result.execution.outputWithheld ? "Command output stays in the local browser." : "The command produced no output."}</p>
             ) : null}
             <Separator />
             <p className="text-xs text-muted-foreground">
-              Secret values were redacted from command output. The agent only received this redacted result.
+              Output is redacted on a best-effort basis in the local browser. The agent receives status and exit details; command output is withheld.
             </p>
           </>
         ) : null}

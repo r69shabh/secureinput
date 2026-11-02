@@ -47,7 +47,9 @@ Out of scope:
 - Secrets are kept in memory, delivered, then removed. They are never logged.
 - Command execution uses `shell: false`; secret values are rejected in argv.
 - Env writes are atomic, `0600`, symlink-safe, and restricted to `.env*` files inside allowed roots.
-- Output is redacted and size-capped; audit records contain metadata only.
+- Command output is withheld from agent-facing results. The paired browser can show size-capped, best-effort redacted output; audit records contain metadata only.
+- Child environment inheritance is limited to basic OS variables and explicit delivery mappings. This is not an OS sandbox.
+- Inline input is opt-in. Submissions are authenticated encrypted envelopes bound to one request; capability and public key are delivered in widget-only metadata. The host must preserve metadata isolation and is trusted to render the widget. A malicious host remains outside the security boundary.
 - Return mode is disabled unless the user starts the daemon with `--allow-return`.
 
 ## Supported versions

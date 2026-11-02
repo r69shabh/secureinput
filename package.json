@@ -41,15 +41,18 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "npm run build:web && tsx src/cli/index.ts serve --no-open",
+    "dev": "npm run build:web && npm run build:inline && tsx src/cli/index.ts serve --no-open",
     "dev:server": "tsx watch src/cli/index.ts serve --no-open",
     "dev:web": "vite",
-    "build": "npm run build:server && npm run build:web",
+    "build": "npm run build:server && npm run build:web && npm run build:inline",
+    "build:inline": "vite build --config vite.inline.config.ts",
     "build:server": "tsup",
     "build:web": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "pretest": "npm run build",
     "test": "node --import tsx --test test/*.test.ts",
     "test:watch": "node --import tsx --test --watch test/*.test.ts",
+    "demo:host": "tsx test/demo-host.ts",
     "start": "node dist/cli/index.js serve",
     "prepublishOnly": "npm run build && npm test"
   },

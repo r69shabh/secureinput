@@ -1,4 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { INLINE_META_KEY, INLINE_RESOURCE_URI, inlineEnvelopeSchema, type InlineEnvelope, type InlineGrant } from "../shared/inline";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { APP_NAME, APP_VERSION } from "../shared/constants";
 import {
@@ -17,7 +21,8 @@ import { ServiceError, type SecureInputService } from "./service";
 import { sourceFromClientInfo } from "./source";
 
 export interface McpBackend {
-  create(input: RequestSecretInput, source: RequestSource): Promise<{ request: PublicSecretRequest }>;
+  create(input: RequestSecretInput, source: RequestSource, inline?: boolean): Promise<{ request: PublicSecretRequest; inline?: InlineGrant }>;
+  submitInline(envelope: InlineEnvelope): Promise<PublicSecretRequest>;
   wait(requestId: string, waitSeconds: number): Promise<AgentRequestResult>;
   cancel(requestId: string): Promise<PublicSecretRequest>;
   status(): Promise<{ policy: ServerPolicyInfo; pending: PublicSecretRequest[] }>;
@@ -25,9 +30,17 @@ export interface McpBackend {
 
 export function createLocalBackend(service: SecureInputService): McpBackend {
   return {
-    async create(input, source) {
-      return service.create(input, source);
+    async create(input, source, inline = false) {
+      const created = service.create(input, source, inline);
+      if (!inline) return created;
+      try {
+        return { ...created, inline: await service.prepareInline(created.request.id) };
+      } catch (error) {
+        if (service.get(created.request.id).status === "pending") service.cancel(created.request.id);
+        throw error;
+      }
     },
+    async submitInline(envelope) { return service.submitInline(envelope); },
     async wait(requestId, waitSeconds) {
       return service.wait(requestId, waitSeconds);
     },
@@ -40,12 +53,12 @@ export function createLocalBackend(service: SecureInputService): McpBackend {
   };
 }
 
-export function createMcpServer(backend: McpBackend, baseSource: RequestSource): McpServer {
+export function createMcpServer(backend: McpBackend, baseSource: RequestSource, options: { inlineEnabled?: boolean; inlineHtml?: () => string } = {}): McpServer {
   const server = new McpServer(
     { name: "secureinput", version: APP_VERSION, title: APP_NAME },
     {
       instructions: [
-        "SecureInput lets the user enter secrets in a local browser UI.",
+        "SecureInput lets the user enter secrets in a local browser UI, or an opt-in encrypted inline form on compatible hosts.",
         "Use request_secret instead of asking the user to paste an API key, password, or token into chat.",
         "Prefer delivery.mode=execute for CLIs and write_env for .env files. Never put a secret in command args.",
         "Secrets are not returned to you unless the user enabled return mode.",
@@ -55,6 +68,34 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource):
 
   const source = () => sourceFromClientInfo(baseSource.via, server.server.getClientVersion(), baseSource);
 
+  const readInlineHtml = options.inlineHtml ?? (() => {
+    const built = path.resolve(import.meta.dirname, import.meta.url.endsWith(".ts") ? "../../dist/inline/index.html" : "../inline/index.html");
+    return readFileSync(built, "utf8");
+  });
+  let inlineHtml: string | undefined;
+  if (options.inlineEnabled) {
+    try { inlineHtml = readInlineHtml(); } catch { /* Missing build: keep browser input working. */ }
+  }
+  const inlineEnabled = inlineHtml !== undefined;
+  if (inlineEnabled) {
+    registerAppResource(server, "SecureInput", INLINE_RESOURCE_URI, {}, async () => ({ contents: [{
+      uri: INLINE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: inlineHtml!,
+      _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: true } },
+    }] }));
+    registerAppTool(server, "submit_inline_secret", {
+      title: "Submit encrypted secure input",
+      description: "Widget-only encrypted submission. Never supply plaintext secret values to this tool.",
+      inputSchema: inlineEnvelopeSchema,
+      _meta: { ui: { visibility: ["app"] } },
+      annotations: { openWorldHint: true, destructiveHint: true },
+    }, async (envelope) => {
+      try {
+        const request = await backend.submitInline(envelope);
+        return toolResult({ ok: request.status === "completed", pending: request.status === "executing", request });
+      } catch (error) { return serviceErrorResult(error); }
+    });
+  }
+
   server.registerTool(
     "request_secret",
     {
@@ -62,29 +103,35 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource):
       description: [
         "Open a local secure input page and wait for the user to enter a secret.",
         "Use delivery.mode=execute to pass the secret directly to a non-interactive command via stdin or env, or write_env to store it in an .env file.",
-        "Never put a secret field in command args; use stdin/env. The agent only receives status and redacted output.",
+        "Never put a secret field in command args; use stdin/env. The agent receives status and exit details; command output stays local.",
         "Deliveries: execute={command,args?,cwd?,stdin?,env?,timeoutSeconds?}; write_env={path,mapping,overwrite?}; return (disabled by default).",
         "Template syntax in stdin/env values is {{fieldId}}. Example: stdin='{{token}}'.",
         "If the result is pending, call check_secret_request with the requestId.",
       ].join(" "),
       inputSchema: requestSecretInputSchema,
-      annotations: { openWorldHint: false, destructiveHint: false },
+      _meta: inlineEnabled ? { ui: { resourceUri: INLINE_RESOURCE_URI }, "ui/resourceUri": INLINE_RESOURCE_URI } : undefined,
+      annotations: { openWorldHint: true, destructiveHint: true },
     },
     async (input): Promise<CallToolResult> => {
       try {
-        const created = await backend.create(input, source());
+        const inline = Boolean(inlineEnabled && input.delivery.mode !== "return" &&
+          getUiCapability(server.server.getClientCapabilities())?.mimeTypes?.includes(RESOURCE_MIME_TYPE));
+        const created = await backend.create(input, source(), inline);
         const waited =
-          input.waitSeconds > 0 ? await backend.wait(created.request.id, input.waitSeconds) : { request: created.request };
+          !inline && input.waitSeconds > 0 ? await backend.wait(created.request.id, input.waitSeconds) : { request: created.request };
         const pending = waited.request.status === "pending" || waited.request.status === "executing";
-        return toolResult({
+        const result = toolResult({
           ok: waited.request.status === "completed",
           pending,
           request: waited.request,
+          browserUrl: `http://127.0.0.1:${(await backend.status()).policy.port}/`,
           returned: waited.returned,
           next: pending
             ? `The user has not submitted yet. Call check_secret_request with requestId="${created.request.id}".`
             : undefined,
         });
+        if (created.inline) result._meta = { [INLINE_META_KEY]: created.inline };
+        return result;
       } catch (error) {
         return serviceErrorResult(error);
       }
@@ -109,7 +156,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource):
           pending,
           request: waited.request,
           returned: waited.returned,
-          next: pending ? "Still waiting. Ask the user to finish in the SecureInput browser tab." : undefined,
+          next: pending ? "Still waiting. Ask the user to finish in SecureInput (the inline form or local browser)." : undefined,
         });
       } catch (error) {
         return serviceErrorResult(error);

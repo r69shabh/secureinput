@@ -47,6 +47,7 @@ export interface DeliverySummary {
 }
 
 export interface ExecutionResult {
+  outputWithheld?: boolean;
   exitCode: number | null;
   signal: string | null;
   stdout: string;
@@ -72,6 +73,7 @@ export interface RequestResult {
 }
 
 export interface PublicSecretRequest {
+  inputMode?: "browser" | "inline";
   id: string;
   title: string;
   description: string;
@@ -88,6 +90,7 @@ export interface PublicSecretRequest {
 }
 
 export interface ServerPolicyInfo {
+  inputMode: "browser" | "inline";
   allowReturn: boolean;
   allowShell: boolean;
   allowedRoots: string[];

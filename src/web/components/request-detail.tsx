@@ -61,7 +61,7 @@ export function RequestDetail({
     setReviewedCommand(false);
     setOverwrite(false);
     setSendToAgent(false);
-  }, [request.id]);
+  }, [request.id, request.status]);
 
   const expired = request.status === "pending" && request.expiresAt <= now;
   const pending = request.status === "pending" && !expired;
@@ -76,8 +76,8 @@ export function RequestDetail({
     return missing;
   }, [overwrite, request.risk, reviewedCommand, sendToAgent]);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(event?: React.FormEvent) {
+    event?.preventDefault();
     if (busy) return;
     const validation = validateFieldValues(request.fields, values);
     if (!validation.ok) {
@@ -187,7 +187,12 @@ export function RequestDetail({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="space-y-5" autoComplete="off">
+            <form onSubmit={submit} onKeyDown={(event) => {
+              if (event.key === "Enter" && event.target instanceof HTMLInputElement && ["text", "password"].includes(event.target.type)) {
+                event.preventDefault();
+                void submit();
+              }
+            }} className="space-y-5" autoComplete="off">
               <div className="grid gap-4">
                 {request.fields.map((field) => {
                   const fieldError = fieldErrors[field.id];
@@ -297,7 +302,7 @@ export function RequestDetail({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <Button type="submit" disabled={busy || missingConfirmations.length > 0}>
+                <Button type="button" onClick={() => void submit()} disabled={busy || missingConfirmations.length > 0}>
                   {busy ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
                   {busy ? "Sending…" : "Send securely"}
                 </Button>

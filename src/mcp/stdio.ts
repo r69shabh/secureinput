@@ -8,6 +8,7 @@ import type {
 } from "../shared/types";
 import { createMcpServer, type McpBackend } from "../server/mcp";
 import { ServiceError } from "../server/service";
+import type { InlineGrant } from "../shared/inline";
 
 export interface RemoteBackendOptions {
   port: number;
@@ -15,6 +16,7 @@ export interface RemoteBackendOptions {
   cwd: string;
   clientName?: string;
   clientVersion?: string;
+  inputMode?: "browser" | "inline";
 }
 
 export function createRemoteBackend(options: RemoteBackendOptions): McpBackend {
@@ -57,12 +59,18 @@ export function createRemoteBackend(options: RemoteBackendOptions): McpBackend {
   }
 
   return {
-    async create(input, _source: RequestSource) {
-      return request<{ request: PublicSecretRequest }>(
-        "/api/agent/requests",
+    async create(input, _source: RequestSource, inline = false) {
+      return request<{ request: PublicSecretRequest; inline?: InlineGrant }>(
+        inline ? "/api/agent/inline-requests" : "/api/agent/requests",
         { method: "POST", body: JSON.stringify(input) },
         15_000,
       );
+    },
+    async submitInline(envelope) {
+      const result = await request<{ request: PublicSecretRequest }>("/api/agent/inline-submit", {
+        method: "POST", body: JSON.stringify(envelope),
+      }, 15_000);
+      return result.request;
     },
     async wait(requestId, waitSeconds) {
       return request<AgentRequestResult>(
@@ -97,7 +105,7 @@ export async function runStdioMcp(options: RemoteBackendOptions): Promise<void> 
     clientName: options.clientName,
     clientVersion: options.clientVersion,
     sessionId: randomUUID(),
-  });
+  }, { inlineEnabled: options.inputMode === "inline" });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

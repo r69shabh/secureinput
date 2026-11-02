@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   APP_NAME,
@@ -33,6 +35,7 @@ import { createLocalBackend, createMcpServer } from "./mcp";
 import type { Policy } from "./policy";
 import { ServiceError, type SecureInputService } from "./service";
 import { sourceFromHeaders } from "./source";
+import { inlineEnvelopeSchema } from "../shared/inline";
 
 export interface AppOptions {
   config: SecureInputConfig;
@@ -50,6 +53,15 @@ export function createApp(options: AppOptions): express.Express {
   const app = express();
   const pairLimiter = new RateLimiter(10, 5 * 60_000);
   const startedAt = options.startedAt;
+  const mcpSessions = new Map<string, { transport: StreamableHTTPServerTransport; close: () => void; touched: number }>();
+  const sessionCleanup = setInterval(() => {
+    for (const session of mcpSessions.values()) if (Date.now() - session.touched > 30 * 60_000) session.close();
+  }, 60_000);
+  sessionCleanup.unref();
+  app.locals.closeMcpSessions = () => {
+    clearInterval(sessionCleanup);
+    for (const session of mcpSessions.values()) session.close();
+  };
 
   app.disable("x-powered-by");
   app.set("trust proxy", false);
@@ -90,7 +102,7 @@ export function createApp(options: AppOptions): express.Express {
     next();
   });
 
-  app.use(express.json({ limit: "64kb", type: ["application/json", "application/*+json"] }));
+  app.use(express.json({ limit: "256kb", type: ["application/json", "application/*+json"] }));
 
   app.get("/api/health", (_req, res) => {
     const health: HealthInfo = {
@@ -252,6 +264,28 @@ export function createApp(options: AppOptions): express.Express {
     }
   });
 
+  app.post("/api/agent/inline-requests", requireMcpAuth(config), async (req, res) => {
+    const parsed = requestSecretInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { code: "invalid_request", message: "Invalid secret request." } });
+      return;
+    }
+    try {
+      res.status(201).json(await createLocalBackend(service).create(parsed.data, sourceFromHeaders(req, "http"), true));
+    } catch (error) { sendServiceError(res, error); }
+  });
+
+  app.post("/api/agent/inline-submit", requireMcpAuth(config), (req, res) => {
+    const parsed = inlineEnvelopeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { code: "invalid_request", message: "Invalid encrypted submission." } });
+      return;
+    }
+    try {
+      res.json({ request: service.submitInline(parsed.data) });
+    } catch (error) { sendServiceError(res, error); }
+  });
+
   app.post("/api/agent/requests/:id/cancel", requireMcpAuth(config), (req, res) => {
     try {
       res.json({ request: service.cancel(String(req.params.id)) });
@@ -276,16 +310,37 @@ export function createApp(options: AppOptions): express.Express {
   });
 
   app.post("/mcp", requireMcpAuth(config), async (req, res) => {
-    const server = createMcpServer(createLocalBackend(service), sourceFromHeaders(req, "http"));
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    res.on("close", () => {
+    const sessionId = req.header("mcp-session-id");
+    if (sessionId) {
+      const session = mcpSessions.get(sessionId);
+      if (!session) {
+        res.status(404).json({ error: { code: "session_not_found", message: "Reconnect the MCP client." } });
+        return;
+      }
+      session.touched = Date.now();
+      await session.transport.handleRequest(req, res, req.body);
+      return;
+    }
+    if (!isInitializeRequest(req.body) || mcpSessions.size >= 30) {
+      res.status(400).json({ error: { code: "mcp_initialize_required", message: "Initialize or reconnect the MCP client." } });
+      return;
+    }
+    const server = createMcpServer(createLocalBackend(service), sourceFromHeaders(req, "http"), { inlineEnabled: config.inputMode === "inline" });
+    const close = () => {
+      if (transport.sessionId) mcpSessions.delete(transport.sessionId);
       void transport.close();
       void server.close();
+    };
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(), enableJsonResponse: true,
+      onsessioninitialized: (id) => { mcpSessions.set(id, { transport, close, touched: Date.now() }); },
+      onsessionclosed: (id) => { mcpSessions.delete(id); },
     });
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
+      close();
       logger.error(`MCP request failed: ${error instanceof Error ? error.message : "unknown error"}`);
       if (!res.headersSent) {
         res.status(500).json({ error: { code: "mcp_error", message: "MCP request failed." } });
@@ -293,6 +348,13 @@ export function createApp(options: AppOptions): express.Express {
         res.end();
       }
     }
+  });
+
+  app.delete("/mcp", requireMcpAuth(config), async (req, res) => {
+    const session = mcpSessions.get(req.header("mcp-session-id") ?? "");
+    if (!session) { res.sendStatus(404); return; }
+    await session.transport.handleRequest(req, res);
+    session.close();
   });
 
   app.get("/mcp", (_req, res) => {

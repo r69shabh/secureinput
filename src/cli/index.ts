@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import open from "open";
 import { APP_NAME, APP_VERSION } from "../shared/constants";
 import type { HealthInfo } from "../shared/types";
@@ -45,6 +45,7 @@ program
   .option("-p, --port <port>", "loopback port", parsePort)
   .option("--root <path>", "allowed root for commands and env files (repeatable)", collect, [])
   .option("--allow-return", "allow agents to receive secret values (dangerous)", undefined)
+  .addOption(new Option("--input-mode <mode>", "input preference (inline requires a compatible, trusted MCP host)").choices(["browser", "inline"]))
   .option("--no-open", "do not open the browser automatically")
   .option("--no-audit", "disable the audit log")
   .option("--home <path>", "SecureInput config directory")
@@ -54,6 +55,7 @@ program
     port?: number;
     root: string[];
     allowReturn?: boolean;
+    inputMode?: "browser" | "inline";
     open: boolean;
     audit: boolean;
     home?: string;
@@ -65,6 +67,7 @@ program
       port: options.port,
       roots: options.root.length > 0 ? options.root : undefined,
       allowReturn: options.allowReturn,
+      inputMode: options.inputMode,
       openBrowser: options.open,
       audit: options.audit,
     });
@@ -115,7 +118,19 @@ program
       cwd: process.cwd(),
       clientName: options.clientName ?? process.env.SECUREINPUT_CLIENT_NAME,
       clientVersion: options.clientVersion ?? process.env.SECUREINPUT_CLIENT_VERSION,
+      inputMode: config.inputMode,
     });
+  });
+
+program
+  .command("settings")
+  .description("Show or change the input preference; restart the daemon and reconnect MCP clients after changes")
+  .option("--home <path>", "SecureInput config directory")
+  .addOption(new Option("--input-mode <mode>", "browser (default) or encrypted inline input").choices(["browser", "inline"]))
+  .action((options: { home?: string; inputMode?: "browser" | "inline" }) => {
+    const config = loadConfig({ home: options.home, inputMode: options.inputMode });
+    console.log(`Input mode: ${config.inputMode}`);
+    if (options.inputMode) console.log("Saved. Restart the daemon and reconnect MCP clients to apply.");
   });
 
 program

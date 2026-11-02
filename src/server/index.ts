@@ -75,6 +75,7 @@ export async function startServer(options: StartOptions): Promise<StartedServer>
   });
 
   const server = createHttpServer(app);
+  server.once("close", () => app.locals.closeMcpSessions());
   await new Promise<void>((resolve, reject) => {
     const onError = (error: NodeJS.ErrnoException) => {
       server.off("listening", onListening);
@@ -109,7 +110,7 @@ export async function startServer(options: StartOptions): Promise<StartedServer>
     // Do not put the pairing token or request data in a URL returned to the agent.
     // The already-paired browser receives request details through the local UI.
     const unsubscribe = bus.subscribe((event) => {
-      if (event.type !== "request.created") return;
+      if (event.type !== "request.created" || event.request.inputMode === "inline") return;
       void openUrl(url).catch(() => {
         logger.warn("Could not open the browser for a request. Open the local SecureInput page or run `secureinput pair`.");
       });

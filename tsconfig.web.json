@@ -19,7 +19,9 @@
   "include": [
     "src/web/**/*.ts",
     "src/web/**/*.tsx",
+    "src/inline/**/*.tsx",
     "src/shared/**/*.ts",
-    "vite.config.ts"
+    "vite.config.ts",
+    "vite.inline.config.ts"
   ]
 }
