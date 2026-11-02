@@ -161,7 +161,7 @@ export class SecureInputService {
     }
 
     let baseCwd = this.options.policy.daemonCwd;
-    const reportedCwd = source.cwd ?? input.cwd;
+    const reportedCwd = source.cwd;
     if (reportedCwd) {
       try {
         baseCwd = resolveCommandCwd(reportedCwd, this.options.policy.daemonCwd, this.options.policy);
@@ -169,6 +169,16 @@ export class SecureInputService {
         throw new ServiceError(
           "cwd_outside_roots",
           error instanceof Error ? error.message : "Reported working directory is not available.",
+        );
+      }
+    }
+    if (input.cwd) {
+      try {
+        baseCwd = resolveCommandCwd(input.cwd, baseCwd, this.options.policy);
+      } catch (error) {
+        throw new ServiceError(
+          "cwd_outside_roots",
+          error instanceof Error ? error.message : "Requested working directory is not available.",
         );
       }
     }

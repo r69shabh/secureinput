@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -106,6 +106,25 @@ test("high-risk execute requires explicit command confirmation", async () => {
   } finally {
     await testServer.close();
   }
+});
+
+test("explicit request cwd resolves env delivery relative to the MCP client cwd", async () => {
+  const testServer = await startTestServer();
+  try {
+    const project = path.join(testServer.home, "project");
+    await mkdir(project);
+    const cookie = await pair(testServer.base, testServer.config.pairingToken);
+    const created = await createWithAgent(testServer, {
+      title: "Store key", description: "Integration test", cwd: "project",
+      fields: [{ id: "token", label: "Token", type: "password", required: true }],
+      delivery: { mode: "write_env", path: ".env.local", mapping: { token: "GEMINI_API_KEY" } },
+      waitSeconds: 0,
+    });
+    assert.equal((await submit(testServer, cookie, created.request.id, { token: "synthetic-key" })).status, 202);
+    assert.equal((await waitForTerminal(testServer, cookie, created.request.id)).status, "completed");
+    assert.match(await readFile(path.join(project, ".env.local"), "utf8"), /^GEMINI_API_KEY=synthetic-key/m);
+    await assert.rejects(stat(path.join(testServer.home, ".env.local")), { code: "ENOENT" });
+  } finally { await testServer.close(); }
 });
 
 test("env write preserves comments, sets 0600, and requires overwrite confirmation", async () => {

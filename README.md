@@ -242,7 +242,7 @@ Fields:
 
 - `title` — short request name, max 100 characters.
 - `description` — why the secret is needed, max 1000 characters.
-- `cwd` — optional working directory; must resolve inside an allowed root.
+- `cwd` — optional working directory, resolved relative to the MCP client's working directory; must resolve inside an allowed root.
 - `fields` — 1–10 inputs. Each has `id`, `label`, optional `description`, `type` (`password` or `text`), `placeholder`, `minLength`, `maxLength`, `pattern` (RE2), `required`, `sensitive`, and `autocomplete`.
 - `delivery` — `execute`, `write_env`, or `return` (disabled by default).
 - `timeoutSeconds` — request lifetime, 30–900 seconds. Default 300.
