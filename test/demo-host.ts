@@ -32,7 +32,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "256kb" }));
 app.get("/", (_req, res) => {
   res.setHeader("Set-Cookie", `demo=${token}; HttpOnly; SameSite=Strict; Path=/`);
-  res.type("html").send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SecureInput local test</title><style>body{margin:24px auto;padding:0 16px;max-width:780px;font:15px system-ui;color:#202020;background:#fafafa}h1{font-size:22px}p{line-height:1.5}iframe{width:100%;border:1px solid #ddd;background:white;border-radius:12px;min-height:900px}code{font-size:13px}</style><h1>SecureInput · local MCP test host</h1><p>Synthetic credentials only. This test renders the real MCP App and forwards its encrypted submission to the local daemon. The approved command writes a demo .env file in an isolated temporary folder.</p><p id="status" role="status">Waiting for input.</p><iframe title="SecureInput MCP App" sandbox="allow-scripts"></iframe><script type="module" src="/host.js"></script></html>`);
+  res.type("html").send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SecureInput local test</title><style>body{margin:24px auto;padding:0 16px;max-width:780px;font:15px system-ui;color:#202020;background:#fafafa}h1{font-size:22px}p{line-height:1.5}iframe{width:100%;border:1px solid #ddd;background:white;border-radius:12px;height:80px}code{font-size:13px}</style><h1>SecureInput · local MCP test host</h1><p>Synthetic credentials only. This test renders the real MCP App and forwards its encrypted submission to the local daemon. The approved command writes a demo .env file in an isolated temporary folder.</p><p id="status" role="status">Waiting for input.</p><iframe title="SecureInput MCP App" sandbox="allow-scripts"></iframe><script type="module" src="/host.js"></script></html>`);
 });
 app.get("/host.js", (_req, res) => res.type("js").send(bundled.outputFiles[0].text));
 let requestId: string | undefined;
@@ -48,12 +48,12 @@ app.post("/demo/start", async (_req, res) => {
     waitSeconds: 0, timeoutSeconds: 900,
   };
   const result = await client.callTool({ name: "request_secret", arguments: input });
-  requestId = (result.structuredContent as any)?.request?.id;
+  requestId = (result.structuredContent as any)?.requestId;
   const resource = await client.readResource({ uri: INLINE_RESOURCE_URI });
   res.json({ input, result, html: "text" in resource.contents[0] ? resource.contents[0].text : "" });
 });
 app.post("/demo/tool", async (req, res) => {
-  if (!["submit_inline_secret", "check_secret_request", "cancel_secret_request"].includes(req.body.name)) { res.sendStatus(403); return; }
+  if (!["submit_inline_secret", "inline_request_status", "check_secret_request", "cancel_secret_request"].includes(req.body.name)) { res.sendStatus(403); return; }
   traffic.push(req.body);
   const result = await client.callTool(req.body);
   traffic.push(result);

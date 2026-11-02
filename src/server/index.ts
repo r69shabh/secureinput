@@ -104,14 +104,14 @@ export async function startServer(options: StartOptions): Promise<StartedServer>
   const autoOpen = options.openBrowser !== false && config.openBrowser && process.env.SECUREINPUT_NO_OPEN !== "1";
   const openUrl = options.openUrl ?? open;
   if (autoOpen) {
-    void openUrl(pairUrl).catch(() => {
+    if (config.inputMode === "browser") void openUrl(pairUrl).catch(() => {
       logger.warn("Could not open the browser automatically. Run `secureinput pair`.");
     });
     // Do not put the pairing token or request data in a URL returned to the agent.
     // The already-paired browser receives request details through the local UI.
     const unsubscribe = bus.subscribe((event) => {
       if (event.type !== "request.created" || event.request.inputMode === "inline") return;
-      void openUrl(url).catch(() => {
+      void openUrl(config.inputMode === "inline" ? pairUrl : url).catch(() => {
         logger.warn("Could not open the browser for a request. Open the local SecureInput page or run `secureinput pair`.");
       });
     });

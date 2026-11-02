@@ -24,14 +24,14 @@ test("built stdio bridge delivers encrypted inline input to a terminal command t
         args: ["-e", "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{require('fs').writeFileSync('.env.terminal','TEST_KEY='+JSON.stringify(s)+String.fromCharCode(10),{mode:0o600}); console.log(Buffer.from(s).toString('hex'))})"],
         stdin: "{{token}}", timeoutSeconds: 5 },
     } });
-    const requestId = (requested.structuredContent as { request: { id: string } }).request.id;
+    const requestId = (requested.structuredContent as { requestId: string }).requestId;
     const grant = requested._meta?.[INLINE_META_KEY] as InlineGrant;
     assert.ok(grant);
     const secret = "synthetic-stdio-terminal-credential";
     const envelope = await encryptInlineSubmission(requestId, grant, { values: { token: secret }, confirmations: { reviewedCommand: true } });
     assert.equal((await client.callTool({ name: "submit_inline_secret", arguments: envelope })).isError, undefined);
     const result = await client.callTool({ name: "check_secret_request", arguments: { requestId, waitSeconds: 10 } });
-    assert.equal((result.structuredContent as { request: { status: string } }).request.status, "completed");
+    assert.equal((result.structuredContent as { status: string }).status, "completed");
     assert.equal(JSON.stringify(result).includes(secret), false);
     assert.equal(JSON.stringify(result).includes(Buffer.from(secret).toString("hex")), false);
     const file = path.join(server.home, ".env.terminal");

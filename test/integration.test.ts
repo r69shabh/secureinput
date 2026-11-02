@@ -277,11 +277,11 @@ test("MCP Streamable HTTP exposes tools and completes a request", async () => {
       });
       const resultContent = result.content as { type: string; text: string }[];
       const payload = JSON.parse(resultContent[0]!.text) as {
-        request: { id: string; risk: { level: string } };
+        requestId: string;
         error?: unknown;
       };
-      assert.ok(payload.request, resultContent[0]!.text);
-      const requestId = payload.request.id;
+      assert.ok(payload.requestId, resultContent[0]!.text);
+      const requestId = payload.requestId;
       assert.ok(requestId);
 
       const submitted = await submit(
@@ -289,7 +289,7 @@ test("MCP Streamable HTTP exposes tools and completes a request", async () => {
         cookie,
         requestId,
         { token: "mcp-secret-value" },
-        payload.request.risk.level === "high" ? { reviewedCommand: true } : undefined,
+        testServer.started.service.get(requestId).risk.level === "high" ? { reviewedCommand: true } : undefined,
       );
       assert.equal(submitted.status, 202);
 
@@ -299,8 +299,8 @@ test("MCP Streamable HTTP exposes tools and completes a request", async () => {
       });
       const checkedContent = checked.content as { type: string; text: string }[];
       const checkedText = checkedContent[0]!.text;
-      const checkedPayload = JSON.parse(checkedText) as { request: { status: string }; returned?: unknown };
-      assert.equal(checkedPayload.request.status, "completed");
+      const checkedPayload = JSON.parse(checkedText) as { status: string; returned?: unknown };
+      assert.equal(checkedPayload.status, "completed");
       assert.equal(checkedPayload.returned, undefined);
       assert.equal(checkedText.includes("mcp-secret-value"), false);
     } finally {

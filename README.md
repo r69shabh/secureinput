@@ -102,7 +102,7 @@ secureinput stop
 
 Reconnect your MCP clients; the next bridge starts the daemon with the saved setting. Alternatively start it explicitly with `secureinput serve --input-mode inline`. To restore browser input, use `secureinput settings --input-mode browser`, then restart and reconnect.
 
-Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form encrypts values, required confirmations and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
+Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label, input and Enter button. In this opt-in mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
 
 The inline widget needs no direct network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys. The local browser retains a stronger boundary from the chat host. Neither mode sandboxes an approved command's filesystem or network access, and no “never trained” claim follows from merely using terminal commands.
 
@@ -242,7 +242,7 @@ Fields:
 - `timeoutSeconds` — request lifetime, 30–900 seconds. Default 300.
 - `waitSeconds` — how long this tool call blocks, 0–240 seconds. Default 30.
 
-If the user has not submitted within `waitSeconds`, the result is `{ "pending": true }`. Call `check_secret_request` with the returned request ID.
+If the user has not submitted within `waitSeconds`, the result is `{ "requestId": "req_…", "status": "pending", "inputMode": "inline" }` (or `"browser"`). Call `check_secret_request` with the returned request ID.
 
 ### `check_secret_request`
 
@@ -262,7 +262,7 @@ Cancels a request that is still pending.
 
 ### `secureinput_status`
 
-Returns daemon policy version, allowed roots, return-mode state, and pending requests.
+Returns input mode, return-mode state, and pending request IDs/statuses. Full browser/API policy responses are unchanged.
 
 ## Delivery modes
 
@@ -321,29 +321,12 @@ The setting is persisted in the config file. Return mode puts the secret in the 
 
 ## What the agent sees
 
+MCP responses are compact, minified status objects. Full request details are sent only in widget-only `_meta`; they are not repeated in model-visible content. The inline widget does not poll while input is pending. After submission it long-polls an app-only status tool, keeping UI updates out of model context.
+
 A completed `execute` request looks like this:
 
 ```json
-{
-  "ok": true,
-  "pending": false,
-  "request": {
-    "id": "req_…",
-    "status": "completed",
-    "result": {
-      "ok": true,
-      "status": "completed",
-      "message": "Command completed successfully.",
-      "execution": {
-        "exitCode": 0,
-        "exitCode": 0,
-        "stderr": "",
-        "timedOut": false,
-        "durationMs": 842
-      }
-    }
-  }
-}
+{"requestId":"req_…","status":"completed","exitCode":0}
 ```
 
 The secret does not appear in the tool result, the request object, the SSE stream, the audit log, or the server log.
@@ -458,7 +441,7 @@ The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are
 ## FAQ
 
 **Does the coding agent see my API key?**
-The MCP result does not intentionally return it by default. The agent sees status, destination summary and exit details; stdout/stderr stay local. An approved command can still write or transmit values, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
+The MCP result does not intentionally return it by default. The agent sees the request ID, status and exit code; stdout/stderr stay local. An approved command can still write or transmit values, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
 
 **Can I enter a secret inside the agent chat?**
 Yes, with the opt-in inline preference and a compatible MCP Apps host. The widget encrypts its submission before passing it through the host to the local daemon. It uses the same command/env-file delivery and confirmation rules as the browser. The host still controls rendering and widget metadata, so use inline input only in a host you trust. See the input-mode settings below. This is not a claim of compatibility with every chat client.

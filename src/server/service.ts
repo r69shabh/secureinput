@@ -291,7 +291,9 @@ export class SecureInputService {
       throw new ServiceError("invalid_inline_submission", "Could not verify the encrypted submission. Retry or use the local browser.");
     }
     try {
-      return submission.action === "deny" ? this.deny(envelope.requestId) : this.submit(envelope.requestId, submission.values, submission.confirmations);
+      // In the opt-in compact inline flow, pressing Enter is consent for the requested delivery.
+      // The browser flow retains its separate destination-review and overwrite confirmations.
+      return submission.action === "deny" ? this.deny(envelope.requestId) : this.submit(envelope.requestId, submission.values, submission.confirmations, true);
     } finally {
       for (const key of Object.keys(submission.values)) delete submission.values[key];
     }
@@ -301,7 +303,7 @@ export class SecureInputService {
     reviewedCommand?: boolean;
     overwrite?: boolean;
     sendToAgent?: boolean;
-  }): PublicSecretRequest {
+  }, inlineConsent = false): PublicSecretRequest {
     const request = this.require(requestId);
     if (request.public.status !== "pending") {
       throw new ServiceError("request_not_pending", `This request is already ${request.public.status}.`);
@@ -318,12 +320,12 @@ export class SecureInputService {
       });
     }
 
-    if (request.public.risk.requiresCommandReview && !confirmations?.reviewedCommand) {
+    if (request.public.risk.requiresCommandReview && !inlineConsent && !confirmations?.reviewedCommand) {
       throw new ServiceError("confirmation_required", "This request needs explicit confirmation that you reviewed the command.", {
         confirmations: ["reviewedCommand"],
       });
     }
-    if (request.public.risk.requiresOverwriteConfirm && !confirmations?.overwrite) {
+    if (request.public.risk.requiresOverwriteConfirm && !inlineConsent && !confirmations?.overwrite) {
       throw new ServiceError("confirmation_required", "Confirm that replacing the existing env keys is intended.", {
         confirmations: ["overwrite"],
       });

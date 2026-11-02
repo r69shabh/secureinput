@@ -3,6 +3,7 @@ import { submitRequestSchema } from "./schemas";
 
 export const INLINE_RESOURCE_URI = "ui://secureinput/input.html";
 export const INLINE_META_KEY = "secureinput/inline";
+export const REQUEST_META_KEY = "secureinput/request";
 export const inlineEnvelopeSchema = z.object({
   version: z.literal(1),
   requestId: z.string().regex(/^req_[A-Za-z0-9_-]{20,64}$/),
