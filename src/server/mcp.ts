@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { INLINE_META_KEY, REQUEST_META_KEY, INLINE_RESOURCE_URI, inlineEnvelopeSchema, type InlineEnvelope, type InlineGrant } from "../shared/inline";
@@ -72,9 +73,12 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
     try { inlineHtml = readInlineHtml(); } catch { /* Missing build: keep browser input working. */ }
   }
   const inlineEnabled = inlineHtml !== undefined;
+  // Changed builds get a different resource identity, so hosts cannot reuse
+  // a previously cached form after reconnecting to the updated server.
+  const resourceUri = inlineHtml === undefined ? INLINE_RESOURCE_URI : `${INLINE_RESOURCE_URI}?v=${createHash("sha256").update(inlineHtml).digest("hex").slice(0, 12)}`;
   if (inlineEnabled) {
-    registerAppResource(server, "SecureInput", INLINE_RESOURCE_URI, {}, async () => ({ contents: [{
-      uri: INLINE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: readInlineHtml(),
+    registerAppResource(server, "SecureInput", resourceUri, {}, async () => ({ contents: [{
+      uri: resourceUri, mimeType: RESOURCE_MIME_TYPE, text: inlineHtml!,
       _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false } },
     }] }));
     registerAppTool(server, "submit_inline_secret", {
@@ -104,7 +108,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
       title: "Request a secret from the user",
       description: "Collect secret input. Use {{fieldId}} in execute stdin/env, or map fields to write_env keys. Never put secrets in args. Returns requestId and status.",
       inputSchema: requestSecretInputSchema,
-      _meta: inlineEnabled ? { ui: { resourceUri: INLINE_RESOURCE_URI }, "ui/resourceUri": INLINE_RESOURCE_URI } : undefined,
+      _meta: inlineEnabled ? { ui: { resourceUri }, "ui/resourceUri": resourceUri } : undefined,
       // Creating the prompt does not execute its delivery. The user submits
       // separately; submit_inline_secret retains the execution-risk hints.
       annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },

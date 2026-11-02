@@ -29,7 +29,6 @@ function InlineInput() {
     };
     const applyTheme = () => {
       const theme = bridge.getHostContext()?.theme ?? "light";
-      document.documentElement.style.colorScheme = theme;
       document.documentElement.dataset.theme = theme;
     };
     bridge.onhostcontextchanged = applyTheme;
@@ -116,10 +115,10 @@ function InlineInput() {
             autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
             aria-invalid={Boolean(error)} aria-describedby={error ? "input-error" : undefined} />
             {done && <svg className="success-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" role="img" aria-label="Saved"><path d="m5 12 4 4L19 6" /></svg>}
+            {index === request.fields.length - 1 && !done && <button className="submit-arrow" type="button" onClick={() => void send()} disabled={!pending || busy} aria-label={busy || request.status === "executing" ? "Saving" : `Submit ${field.label}`} aria-busy={busy || request.status === "executing"}>
+              {busy || request.status === "executing" ? <svg className="saving-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8" strokeOpacity=".2"/><path d="M12 4a8 8 0 0 1 8 8"/></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 10-5 5 5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>}
+            </button>}
           </div>
-          {index === request.fields.length - 1 && !done && <button type="button" onClick={() => void send()} disabled={!pending || busy}>
-            {busy || request.status === "executing" ? "Saving…" : "Enter"}
-          </button>}
         </div>
       </div>)}
     </form>}

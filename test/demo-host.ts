@@ -24,14 +24,18 @@ const token = randomUUID();
 app.use((req, res, next) => {
   if (!/^127\.0\.0\.1:\d+$/.test(req.headers.host ?? "")) { res.sendStatus(403); return; }
   if (req.method === "POST" && (req.header("x-secureinput-demo") !== "1" || (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`))) { res.sendStatus(403); return; }
-  if (req.path !== "/" && !req.headers.cookie?.split("; ").includes(`demo=${token}`)) { res.sendStatus(401); return; }
+  if (!["/", "/preview"].includes(req.path) && !req.headers.cookie?.split("; ").includes(`demo=${token}`)) { res.sendStatus(401); return; }
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
 app.use(express.json({ limit: "256kb" }));
-app.get("/", (_req, res) => {
+app.get(["/", "/preview"], (req, res) => {
   res.setHeader("Set-Cookie", `demo=${token}; HttpOnly; SameSite=Strict; Path=/`);
+  if (req.path === "/preview") {
+    res.type("html").send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SecureInput preview</title><style>body{margin:0;padding:24px;background:#18181b;color:#fafafa}iframe{display:block;width:100%;height:104px;border:0;background:transparent}#status{display:none}</style><div id="status" role="status"></div><iframe title="SecureInput" sandbox="allow-scripts"></iframe><script type="module" src="/host.js"></script></html>`);
+    return;
+  }
   res.type("html").send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SecureInput local test</title><style>body{margin:24px auto;padding:0 16px;max-width:780px;font:15px system-ui;color:#202020;background:#fafafa}h1{font-size:22px}p{line-height:1.5}iframe{width:100%;border:1px solid #ddd;background:white;border-radius:12px;height:80px}code{font-size:13px}</style><h1>SecureInput · local MCP test host</h1><p>Synthetic credentials only. This test renders the real MCP App and forwards its encrypted submission to the local daemon. The approved command writes a demo .env file in an isolated temporary folder.</p><p id="status" role="status">Waiting for input.</p><iframe title="SecureInput MCP App" sandbox="allow-scripts"></iframe><script type="module" src="/host.js"></script></html>`);
 });
 app.get("/host.js", (_req, res) => res.type("js").send(bundled.outputFiles[0].text));
@@ -43,13 +47,15 @@ app.post("/demo/start", async (_req, res) => {
   }
   const input = {
     title: "Save a synthetic demo credential", description: "Test encrypted inline input followed by a local terminal command. Use a fake credential only.",
-    fields: [{ id: "token", label: "Demo API key", type: "password", required: true }],
+    fields: [{ id: "token", label: "Gemini API key", type: "password", required: true }],
     delivery: { mode: "execute", command: process.execPath, args: ["-e", "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{require('fs').writeFileSync('.env.inline-demo','DEMO_KEY='+JSON.stringify(s)+String.fromCharCode(10),{mode:0o600});console.log('credential='+s)})"], stdin: "{{token}}", timeoutSeconds: 10 },
     waitSeconds: 0, timeoutSeconds: 900,
   };
   const result = await client.callTool({ name: "request_secret", arguments: input });
   requestId = (result.structuredContent as any)?.requestId;
-  const resource = await client.readResource({ uri: INLINE_RESOURCE_URI });
+  const tools = (await client.listTools()).tools;
+  const uri = (tools.find((tool) => tool.name === "request_secret")?._meta?.ui as { resourceUri?: string })?.resourceUri ?? INLINE_RESOURCE_URI;
+  const resource = await client.readResource({ uri });
   res.json({ input, result, html: "text" in resource.contents[0] ? resource.contents[0].text : "" });
 });
 app.post("/demo/tool", async (req, res) => {

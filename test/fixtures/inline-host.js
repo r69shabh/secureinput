@@ -5,7 +5,7 @@ const response = await fetch("/demo/start", { method: "POST", headers: { "x-secu
 if (!response.ok) throw new Error("Could not start the synthetic demo.");
 const { result, html, input } = await response.json();
 const frame = document.querySelector("iframe");
-const bridge = new AppBridge(null, { name: "SecureInput local test host", version: "1" }, { serverTools: {}, openLinks: {} });
+const bridge = new AppBridge(null, { name: "SecureInput local test host", version: "1" }, { serverTools: {}, openLinks: {} }, { hostContext: { theme: location.pathname === "/preview" ? "dark" : "light" } });
 bridge.oncalltool = async (params) => {
   const response = await fetch("/demo/tool", { method: "POST", headers: { "content-type": "application/json", "x-secureinput-demo": "1" }, body: JSON.stringify(params) });
   if (!response.ok) throw new Error("The local test host could not forward the tool call.");

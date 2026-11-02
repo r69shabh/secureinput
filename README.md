@@ -93,6 +93,8 @@ The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinp
 
 ## Browser or inline input
 
+Widget resources are versioned by build content. Reconnect the MCP client after an update so it discovers the new resource; already-open chat cards retain their earlier UI.
+
 Inline input is the default on compatible MCP Apps clients. If the client cannot render it, SecureInput automatically opens paired localhost browser input. No browser is opened for supported inline requests, and Enter authorizes the requested delivery without an additional SecureInput confirmation dialog. The host may still apply its own MCP tool permissions.
 
 Existing explicit browser-only preferences are preserved. To switch an existing installation to inline-first:
@@ -104,7 +106,7 @@ secureinput stop
 
 Reconnect your MCP clients to apply a changed setting. Use `secureinput settings --input-mode browser` only if you want to force browser input.
 
-Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label, input and Enter button. In inline mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
+Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label and a rounded outline input with an inset submit arrow. In inline mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
 
 The inline widget needs no direct network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys. The local browser retains a stronger boundary from the chat host. Neither mode sandboxes an approved command's filesystem or network access, and no “never trained” claim follows from merely using terminal commands.
 

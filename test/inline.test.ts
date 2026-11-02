@@ -71,7 +71,9 @@ test("inline MCP form encrypts values; execution completes without returning out
     const tools = (await connection.client.listTools()).tools;
     assert.deepEqual((tools.find((t) => t.name === "submit_inline_secret")?._meta?.ui as { visibility: string[] }).visibility, ["app"]);
     assert.deepEqual((tools.find((t) => t.name === "inline_request_status")?._meta?.ui as { visibility: string[] }).visibility, ["app"]);
-    const resource = await connection.client.readResource({ uri: INLINE_RESOURCE_URI });
+    const resourceUri = (tools.find((t) => t.name === "request_secret")?._meta?.ui as { resourceUri: string }).resourceUri;
+    assert.ok(resourceUri.startsWith(`${INLINE_RESOURCE_URI}?v=`));
+    const resource = await connection.client.readResource({ uri: resourceUri });
     assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
     assert.ok("text" in resource.contents[0]);
     assert.match(resource.contents[0].text, /SecureInput/);
