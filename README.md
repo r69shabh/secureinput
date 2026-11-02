@@ -41,7 +41,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 - **Local only** — binds to `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
 - **No secret in chat** — the agent receives request status and redacted stdout/stderr.
 - **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
-- **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env*` only.
+- **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env` and `.env.*` only.
 - **Human approval** — the UI shows which agent, working directory, command, file, and keys are involved, with extra confirmation for risky destinations.
 - **One-time requests** — pending requests expire, results are short-lived, and a submission can only be claimed once.
 - **Defense in depth** — RE2-safe validation patterns, value/output size caps, ANSI stripping, output redaction, audit metadata without values.
