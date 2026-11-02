@@ -1,11 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { INLINE_META_KEY, REQUEST_META_KEY, INLINE_RESOURCE_URI, inlineEnvelopeSchema, type InlineEnvelope, type InlineGrant } from "../shared/inline";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { APP_NAME, APP_VERSION } from "../shared/constants";
+import { APP_NAME, APP_VERSION, MAX_REQUEST_TTL_SECONDS } from "../shared/constants";
 import {
   cancelRequestInputSchema,
   checkRequestInputSchema,
@@ -54,7 +54,7 @@ export function createLocalBackend(service: SecureInputService): McpBackend {
   };
 }
 
-export function createMcpServer(backend: McpBackend, baseSource: RequestSource, options: { inlineEnabled?: boolean; inlineHtml?: () => string } = {}): McpServer {
+export function createMcpServer(backend: McpBackend, baseSource: RequestSource, options: { inlineEnabled?: boolean; inlineHtml?: () => string; inlinePath?: string; refreshIntervalMs?: number } = {}): McpServer {
   const server = new McpServer(
     { name: "secureinput", version: APP_VERSION, title: APP_NAME },
     {
@@ -64,23 +64,26 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
 
   const source = () => sourceFromClientInfo(baseSource.via, server.server.getClientVersion(), baseSource);
 
-  const readInlineHtml = options.inlineHtml ?? (() => {
-    const built = path.resolve(import.meta.dirname, import.meta.url.endsWith(".ts") ? "../../dist/inline/index.html" : "../inline/index.html");
-    return readFileSync(built, "utf8");
-  });
+  const built = options.inlinePath ?? path.resolve(import.meta.dirname, import.meta.url.endsWith(".ts") ? "../../dist/inline/index.html" : "../inline/index.html");
+  const readInlineHtml = options.inlineHtml ?? (() => readFileSync(built, "utf8"));
   let inlineHtml: string | undefined;
   if (options.inlineEnabled) {
     try { inlineHtml = readInlineHtml(); } catch { /* Missing build: keep browser input working. */ }
   }
   const inlineEnabled = inlineHtml !== undefined;
-  // Changed builds get a different resource identity, so hosts cannot reuse
-  // a previously cached form after reconnecting to the updated server.
-  const resourceUri = inlineHtml === undefined ? INLINE_RESOURCE_URI : `${INLINE_RESOURCE_URI}?v=${createHash("sha256").update(inlineHtml).digest("hex").slice(0, 12)}`;
-  if (inlineEnabled) {
-    registerAppResource(server, "SecureInput", resourceUri, {}, async () => ({ contents: [{
-      uri: resourceUri, mimeType: RESOURCE_MIME_TYPE, text: inlineHtml!,
+  // Changed builds get a different resource identity, avoiding stale host caches.
+  let resourceUri = inlineHtml === undefined ? INLINE_RESOURCE_URI : `${INLINE_RESOURCE_URI}?v=${createHash("sha256").update(inlineHtml).digest("hex").slice(0, 12)}`;
+  const resources = new Map<string, ReturnType<typeof registerAppResource>>();
+  const registerSnapshot = (uri: string, html: string) => {
+    if (resources.has(uri)) return;
+    const resource = registerAppResource(server, "SecureInput", uri, {}, async () => ({ contents: [{
+      uri, mimeType: RESOURCE_MIME_TYPE, text: html,
       _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false } },
     }] }));
+    resources.set(uri, resource);
+  };
+  if (inlineEnabled) {
+    registerSnapshot(resourceUri, inlineHtml!);
     registerAppTool(server, "submit_inline_secret", {
       title: "Submit encrypted secure input",
       description: "Submit an encrypted input envelope.",
@@ -102,7 +105,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
     });
   }
 
-  server.registerTool(
+  const requestTool = server.registerTool(
     "request_secret",
     {
       title: "Request a secret from the user",
@@ -129,6 +132,55 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
       }
     },
   );
+
+  if (inlineEnabled) {
+    let stamp = "";
+    const initialUri = resourceUri;
+    const retireTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const refresh = () => {
+      try {
+        if (!options.inlineHtml) {
+          const info = statSync(built);
+          const nextStamp = `${info.mtimeMs}:${info.size}`;
+          if (stamp === nextStamp) return;
+          stamp = nextStamp;
+        }
+        const html = readInlineHtml();
+        // A build may temporarily remove or partially write the file.
+        if (!html || html.length > 5_000_000 || !/<\/html>\s*$/i.test(html)) { stamp = ""; return; }
+        const nextUri = `${INLINE_RESOURCE_URI}?v=${createHash("sha256").update(html).digest("hex").slice(0, 12)}`;
+        if (nextUri === resourceUri) return;
+        // Preserve old snapshots for active requests, and the initial snapshot
+        // for hosts that have cached the original tool descriptor.
+        const previousUri = resourceUri;
+        const existingTimer = retireTimers.get(nextUri);
+        if (existingTimer) { clearTimeout(existingTimer); retireTimers.delete(nextUri); }
+        registerSnapshot(nextUri, html);
+        resourceUri = nextUri;
+        requestTool.update({ _meta: { ui: { resourceUri }, "ui/resourceUri": resourceUri } });
+        if (previousUri !== initialUri) {
+          const retire = setTimeout(() => {
+            resources.get(previousUri)?.remove();
+            resources.delete(previousUri);
+            retireTimers.delete(previousUri);
+          }, (MAX_REQUEST_TTL_SECONDS + 60) * 1000);
+          retire.unref();
+          retireTimers.set(previousUri, retire);
+        }
+      } catch {
+        // Keep serving the last complete snapshot while an update is being installed.
+        stamp = "";
+      }
+    };
+    const timer = setInterval(refresh, options.refreshIntervalMs ?? 2000);
+    timer.unref();
+    const previousClose = server.server.onclose;
+    server.server.onclose = () => {
+      clearInterval(timer);
+      for (const retire of retireTimers.values()) clearTimeout(retire);
+      previousClose?.();
+    };
+  }
 
   server.registerTool(
     "check_secret_request",

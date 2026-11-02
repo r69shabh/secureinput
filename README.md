@@ -93,7 +93,9 @@ The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinp
 
 ## Browser or inline input
 
-Widget resources are versioned by build content. Reconnect the MCP client after an update so it discovers the new resource; already-open chat cards retain their earlier UI.
+When the local inline widget is rebuilt, a connected SecureInput server announces the updated resource automatically. Clients that honor MCP tool-list change notifications can use the new form for subsequent requests without reconnecting; already-open forms keep their original version. Some clients may need a reconnect if they do not refresh tool metadata. Installing this refresh capability itself requires restarting the existing MCP process once.
+
+A GitHub push does not install updates on users' computers: update the local checkout and rebuild it first. The refresh mechanism updates the widget only; changes to the running server or daemon may still require a restart. SecureInput does not silently download or execute updates.
 
 Inline input is the default on compatible MCP Apps clients. If the client cannot render it, SecureInput automatically opens paired localhost browser input. No browser is opened for supported inline requests, and Enter authorizes the requested delivery without an additional SecureInput confirmation dialog. The host may still apply its own MCP tool permissions.
 

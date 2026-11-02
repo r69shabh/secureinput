@@ -5,6 +5,7 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { encryptInlineSubmission, INLINE_META_KEY, REQUEST_META_KEY, INLINE_RESOURCE_URI, type InlineGrant } from "../src/shared/inline";
 import { loadConfig } from "../src/server/config";
 import { requestSecretInputSchema } from "../src/shared/schemas";
@@ -50,6 +51,50 @@ test("missing inline build falls back without advertising a broken UI resource",
     assert.equal(tools.some((t) => t.name === "submit_inline_secret"), false);
     const result = await client.callTool({ name: "request_secret", arguments: body });
     assert.equal((result.structuredContent as any).inputMode, "browser");
+  } finally { await client.close(); await server.close(); await daemon.close(); }
+});
+
+test("widget updates are announced without reconnecting and preserve pending input", async () => {
+  const daemon = await startTestServer({ inputMode: "inline" });
+  const widgetPath = path.join(daemon.home, "widget.html");
+  await writeFile(widgetPath, "<html>original</html>");
+  const server = createMcpServer(createLocalBackend(daemon.started.service), { via: "stdio", cwd: daemon.home }, {
+    inlineEnabled: true, inlinePath: widgetPath, refreshIntervalMs: 20,
+  });
+  const client = new Client({ name: "widget-refresh-test", version: "1" }, {
+    capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } },
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  let notifications = 0;
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () => { notifications++; });
+  const resourceUri = async () => ((await client.listTools()).tools.find((tool) => tool.name === "request_secret")?._meta?.ui as { resourceUri: string }).resourceUri;
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    const originalUri = await resourceUri();
+    const pending = await client.callTool({ name: "request_secret", arguments: body });
+    const request = pending._meta?.[REQUEST_META_KEY] as any;
+    const grant = pending._meta?.[INLINE_META_KEY] as InlineGrant;
+    await writeFile(widgetPath, "<html>incomplete");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(await resourceUri(), originalUri);
+    assert.equal(notifications, 0);
+    await writeFile(widgetPath, "<html>updated</html>");
+    for (let i = 0; i < 100 && notifications === 0; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(notifications > 0, "client received a tools/list_changed notification");
+    const updatedUri = await resourceUri();
+    assert.notEqual(updatedUri, originalUri);
+    const updated = (await client.readResource({ uri: updatedUri })).contents[0];
+    const original = (await client.readResource({ uri: originalUri })).contents[0];
+    assert.ok("text" in updated && "text" in original);
+    assert.equal(updated.text, "<html>updated</html>");
+    assert.equal(original.text, "<html>original</html>");
+    const envelope = await encryptInlineSubmission(request.id, grant, { values: { token: "synthetic-refresh-secret" } });
+    const submitted = await client.callTool({ name: "submit_inline_secret", arguments: envelope });
+    assert.equal(submitted.isError, undefined);
+    const checked = await client.callTool({ name: "check_secret_request", arguments: { requestId: request.id, waitSeconds: 10 } });
+    assert.equal((checked.structuredContent as any).status, "completed");
+    assert.equal(JSON.stringify(checked).includes("synthetic-refresh-secret"), false);
   } finally { await client.close(); await server.close(); await daemon.close(); }
 });
 
