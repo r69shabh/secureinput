@@ -1,0 +1,25 @@
+{
+  "manifest_version": "0.3",
+  "name": "secureinput",
+  "display_name": "SecureInput",
+  "version": "0.1.0",
+  "description": "Local secret input for AI agents: pass API keys to commands or .env files outside chat.",
+  "author": { "name": "SecureInput contributors", "url": "https://github.com/r69shabh" },
+  "repository": { "type": "git", "url": "https://github.com/r69shabh/secureinput" },
+  "homepage": "https://github.com/r69shabh/secureinput#readme",
+  "license": "MIT",
+  "keywords": ["mcp", "api-keys", "secrets", "ai-agents", "local-first"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/cli/index.js",
+    "mcp_config": { "command": "node", "args": ["${__dirname}/dist/cli/index.js", "mcp"] }
+  },
+  "compatibility": { "platforms": ["darwin", "linux"], "runtimes": { "node": ">=22.0.0" } },
+  "tools_generated": true,
+  "tools": [
+    { "name": "request_secret", "description": "Collect secret input and deliver it to a command or env file." },
+    { "name": "check_secret_request", "description": "Check the status of an input request." },
+    { "name": "cancel_secret_request", "description": "Cancel a pending input request." },
+    { "name": "secureinput_status", "description": "Check input mode and pending requests." }
+  ]
+}

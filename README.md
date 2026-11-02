@@ -1,10 +1,12 @@
-# SecureInput: secure secret input for AI coding agents (MCP)
+# SecureInput — private API key input for AI coding agents
 
 [![CI](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml/badge.svg)](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml)
 
-**Stop pasting API keys, passwords, and tokens into your coding agent's chat.** SecureInput is a local-first MCP server with a small browser input box. The agent asks for a secret, you type it into a page on your own machine, and SecureInput delivers it straight to the command or `.env` file you approved. The agent gets status and exit details; command output stays in the local browser.
+**Give an AI coding agent the access it needs without pasting your API key into chat.** SecureInput is an open-source, local-first Model Context Protocol (MCP) server for API keys, passwords, and tokens. It collects input in an inline MCP App when the host supports it, or in a paired localhost browser otherwise. It can pass the value to a local command through stdin or environment variables, or write it to a `.env` file.
 
-Works with Claude Code, Cursor, Codex CLI, VS Code / GitHub Copilot, Windsurf, Cline, and any other MCP client. macOS, Linux, and Node.js 22+.
+The default MCP response contains status and exit information, not the secret. The MCP bridge is designed for stdio clients such as Claude Code, Cursor, Codex, VS Code / GitHub Copilot, Windsurf, and Cline; inline display depends on the host's MCP Apps support. macOS and Linux require Node.js 22 or newer.
+
+**[Install from source](#quick-start-from-source)** · **[Connect your agent](#connect-your-coding-agent)** · **[Security model](#security-model)** · **[FAQ](#faq)**
 
 ```
 agent: "I need a GitHub token to create the repo."
@@ -13,12 +15,12 @@ agent: "I need a GitHub token to create the repo."
   request_secret (MCP)
         │
         ▼
+  inline form in a compatible host, or paired localhost browser
+        │
+        ▼
   SecureInput daemon on 127.0.0.1
-        │
-        ├── browser input box ──► you paste the token
-        │
-        ├── execute: gh auth login --with-token   (token via stdin, never argv)
-        └── write_env: .env.local                 (atomic, 0600)
+        ├── execute: gh auth login --with-token   (token through stdin)
+        └── write_env: .env.local                 (plaintext file, mode 0600)
         │
         ▼
 agent: { "ok": true, "status": "completed", "exitCode": 0 }
@@ -35,7 +37,7 @@ Coding agents constantly need credentials. The usual options are bad:
 | Type it into a terminal prompt | Fine, but repetitive, easy to mistype, and impossible for remote or headless agents. |
 | Commit a `.env` by hand | Easy to get wrong permissions, duplicate keys, or commit the file. |
 
-SecureInput sits between the agent and the credential. The secret moves from your browser to the approved destination inside one local process. It is never an MCP tool result by default.
+SecureInput provides a separate input path for the credential. By default it does not return the value in the MCP tool result. The inline host, commands you run, and applications with access to a written `.env` file remain part of the trust boundary. See [Security model](#security-model).
 
 ## Features
 
@@ -44,7 +46,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 - **No secret in chat by default** — the agent receives request status and exit details. stdout/stderr are withheld from MCP results.
 - **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
 - **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env` and `.env.*` only.
-- **Human approval** — the UI shows which agent, working directory, command, file, and keys are involved, with extra confirmation for risky destinations.
+- **Two input modes** — the compact inline form submits on Enter; the paired browser offers request details and additional confirmations for risky actions.
 - **One-time requests** — pending requests expire, results are short-lived, and a submission can only be claimed once.
 - **Defense in depth** — RE2-safe validation patterns, value/output size caps, ANSI stripping, output redaction, audit metadata without values.
 - **Small shadcn/ui frontend** — the UI is intentionally boring: pairing, a request list, a form, and a result.
@@ -58,7 +60,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 
 ## Quick start from source
 
-The npm package is not published yet. Install from this repository:
+The npm package is not published. Install from this repository, or download the [MCP bundle from GitHub Releases](https://github.com/r69shabh/secureinput/releases) for an MCPB-compatible client. The bundle requires Node.js 22 or newer and is currently unsigned.
 
 ```bash
 git clone https://github.com/r69shabh/secureinput.git
@@ -68,7 +70,7 @@ npm run build
 npm link          # puts `secureinput` on your PATH
 ```
 
-Start the daemon and pair your browser:
+Add SecureInput to your [MCP client](#connect-your-coding-agent). The first client connection starts the local daemon automatically. To start it yourself and pair the browser fallback:
 
 ```bash
 secureinput serve
@@ -287,7 +289,7 @@ Returns input mode, return-mode state, and pending request IDs/statuses. Full br
 ```
 
 - The command is spawned directly with `shell: false`. There is no shell interpolation by SecureInput.
-- Secret fields can appear in `stdin` or `env` values as `{{fieldId}}`. They cannot appear in `command` or `args`, so they never show up in the process list.
+- Secret fields can appear in `stdin` or `env` values as `{{fieldId}}`. They cannot appear in `command` or `args`. Environment variables can still be visible to other processes on some systems; prefer stdin when available.
 - Non-sensitive `text` fields may be used in `args` for things like usernames.
 - At least one secret reference must go through `stdin` or `env`.
 - stdout and stderr are withheld from the agent. The paired local browser can show size-capped, best-effort redacted output.
@@ -311,7 +313,7 @@ Returns input mode, return-mode state, and pending request IDs/statuses. Full br
 - Only `.env` and `.env.*` files are allowed, and names containing `example`, `sample`, `template`, `dist`, `defaults`, or `schema` are rejected. Script-like names such as `.envrc` are not accepted.
 - The parent directory must exist and resolve inside an allowed root.
 - Symlinks are rejected.
-- Existing keys require `overwrite: true`; the UI adds a separate overwrite confirmation.
+- Existing keys require `overwrite: true`. The browser asks for overwrite confirmation; inline submission authorizes the requested overwrite without a separate confirmation.
 - Writes are atomic and the resulting file gets mode `0600`. Existing comments, `export` prefixes, quoting style, and line endings are preserved.
 - Files larger than 1 MiB are refused.
 
@@ -355,7 +357,7 @@ SecureInput is built for the local-desktop threat model, not for hostile multi-u
 - Output redaction covers raw, JSON-escaped, URL-encoded, and base64 forms of each secret, plus common token formats.
 - Command execution with `shell: false`; timeout kills the process group.
 - Env writes are atomic, `0600`, symlink-safe, and confined to allowed roots.
-- Risk assessment marks shell/network/absolute-path commands, env overwrites, and return mode. High-risk requests need explicit review checkboxes.
+- Risk assessment marks shell/network/absolute-path commands, env overwrites, and return mode. The browser flow adds review checkboxes; the inline flow does not show those checkboxes and submission authorizes delivery.
 - Audit log records metadata and outcomes only: request ID, client, delivery destination, field names, exit code, duration.
 
 **Outside the boundary**
@@ -431,18 +433,15 @@ This is useful for clients or test harnesses that prefer HTTP over stdio. The en
 
 The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are implementation details and may change; the MCP tools are the stable interface.
 
-## Comparison
+## Choose a delivery method
 
-| | Chat paste | Terminal prompt | Manual `.env` | SecureInput |
-| --- | --- | --- | --- | --- |
-| Secret enters model context | Yes | No | No | **No** (unless return mode) |
-| Secret in shell history | Maybe | Maybe | No | **No** |
-| Secret in process list | Maybe | Maybe | No | **No** |
-| Human sees destination before delivery | No | Sometimes | Yes | **Yes** |
-| Works with headless agents | Yes | No | Yes | **Yes, via MCP** |
-| Automatic `.env` writing | No | No | No | **Yes** |
-| Output redaction | No | No | No | **Yes** |
-| Local-only | No | Yes | Yes | **Yes** |
+| Method | Useful for | What persists |
+| --- | --- | --- |
+| `execute` with stdin | A non-interactive CLI login or command that accepts a token on stdin | The command may store credentials itself |
+| `execute` with environment variables | A command that requires an environment variable | The command may store credentials; other same-user processes may see its environment |
+| `write_env` | A local application that reads a `.env` file | A plaintext file with owner-only permissions |
+
+Use the browser input mode when you need to review the destination and risk confirmations in SecureInput itself. The compact inline form shows the input label and submits immediately; it does not show the browser's review screen. A person must be available to enter the value in either mode.
 
 ## FAQ
 
@@ -465,7 +464,7 @@ Yes. Add the `mcpServers` entry shown above to Cursor's MCP config.
 A password manager is great for humans, but it is not an MCP delivery path. SecureInput focuses on getting a secret into a specific command or env file with an auditable destination, without an agent API key.
 
 **Can the agent read my whole environment?**
-A command receives a small set of OS environment variables plus the values explicitly supplied in the delivery mapping. It still runs with your OS user's permissions and may read files or credential stores. That is why the UI shows the exact command and why high-risk commands need a confirmation. Use the smallest credential and the narrowest scope you can.
+A command receives a small set of OS environment variables plus the values explicitly supplied in the delivery mapping. It still runs with your OS user's permissions and may read files or credential stores. The browser mode shows the command and adds confirmations for high-risk requests; the compact inline mode does not show those details. Use the smallest credential and the narrowest scope you can.
 
 **What happens if the daemon restarts?**
 Pending requests and completed results are lost. The agent will receive a "request not found" error and can create a new request. This is deliberate: no secret vault, no stale credentials.
