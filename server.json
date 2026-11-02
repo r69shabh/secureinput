@@ -9,7 +9,7 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/r69shabh/secureinput/releases/download/v0.1.0/secureinput-0.1.0.mcpb",
+      "identifier": "https://github.com/r69shabh/secureinput/releases/download/v0.1.0/secureinput-release-0.1.0.mcpb",
       "fileSha256": "22d6c9e65453f0c3940e8868605ba0e2395538a538d8ee53ca444247ad7f3a98",
       "transport": { "type": "stdio" }
     }
