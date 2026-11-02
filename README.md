@@ -1,5 +1,7 @@
 # SecureInput: secure secret input for AI coding agents (MCP)
 
+[![CI](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml/badge.svg)](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml)
+
 **Stop pasting API keys, passwords, and tokens into your coding agent's chat.** SecureInput is a local-first MCP server with a small browser input box. The agent asks for a secret, you type it into a page on your own machine, and SecureInput delivers it straight to the command or `.env` file you approved. The agent gets status and redacted output, not the secret.
 
 Works with Claude Code, Cursor, Codex CLI, VS Code / GitHub Copilot, Windsurf, Cline, and any other MCP client. macOS, Linux, and Node.js 22+.
