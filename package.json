@@ -54,6 +54,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.1.2",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -82,7 +83,8 @@
     "tsx": "^4.19.0",
     "tw-animate-css": "^1.3.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.4"
   },
   "overrides": {
     "tsup": {
