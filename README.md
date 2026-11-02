@@ -54,7 +54,7 @@ SecureInput sits between the agent and the credential. The secret moves from you
 
 - Node.js 22 or newer
 - macOS or Linux (Windows is supported in code but not yet covered by CI)
-- A browser on the same machine
+- An MCP Apps-compatible host, or a browser on the same machine for fallback
 
 ## Quick start from source
 
@@ -74,7 +74,7 @@ Start the daemon and pair your browser:
 secureinput serve
 ```
 
-The pairing URL opens automatically. Each new browser-mode request also opens the local page, if automatic opening is enabled. If pairing does not open, run:
+Inline requests do not open a browser. When a client needs the browser fallback, its pairing page opens automatically if browser opening is enabled. You can also open and pair it manually:
 
 ```bash
 secureinput pair
@@ -93,16 +93,18 @@ The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinp
 
 ## Browser or inline input
 
-Browser input is the default. To opt into encrypted inline input:
+Inline input is the default on compatible MCP Apps clients. If the client cannot render it, SecureInput automatically opens paired localhost browser input. No browser is opened for supported inline requests, and Enter authorizes the requested delivery without an additional SecureInput confirmation dialog. The host may still apply its own MCP tool permissions.
+
+Existing explicit browser-only preferences are preserved. To switch an existing installation to inline-first:
 
 ```bash
 secureinput settings --input-mode inline
 secureinput stop
 ```
 
-Reconnect your MCP clients; the next bridge starts the daemon with the saved setting. Alternatively start it explicitly with `secureinput serve --input-mode inline`. To restore browser input, use `secureinput settings --input-mode browser`, then restart and reconnect.
+Reconnect your MCP clients to apply a changed setting. Use `secureinput settings --input-mode browser` only if you want to force browser input.
 
-Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label, input and Enter button. In this opt-in mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
+Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label, input and Enter button. In inline mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
 
 The inline widget needs no direct network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys. The local browser retains a stronger boundary from the chat host. Neither mode sandboxes an approved command's filesystem or network access, and no “never trained” claim follows from merely using terminal commands.
 
@@ -444,7 +446,7 @@ The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are
 The MCP result does not intentionally return it by default. The agent sees the request ID, status and exit code; stdout/stderr stay local. An approved command can still write or transmit values, and an agent with terminal or filesystem access may be able to read a written `.env` file. `return` mode explicitly gives the value to the agent and is disabled unless you start the daemon with `--allow-return`.
 
 **Can I enter a secret inside the agent chat?**
-Yes, with the opt-in inline preference and a compatible MCP Apps host. The widget encrypts its submission before passing it through the host to the local daemon. It uses the same command/env-file delivery and confirmation rules as the browser. The host still controls rendering and widget metadata, so use inline input only in a host you trust. See the input-mode settings below. This is not a claim of compatibility with every chat client.
+Yes, by default with a compatible MCP Apps host. The widget encrypts its submission before passing it through the host to the local daemon. It uses the same local command/env-file delivery implementation; Enter authorizes inline delivery, while the browser retains its review controls. The host still controls rendering and widget metadata, so use inline input only in a host you trust. See the input-mode settings below. This is not a claim of compatibility with every chat client.
 
 **Where are secrets stored?**
 SecureInput keeps pending requests and submitted values in process memory and drops references after delivery; JavaScript memory is not guaranteed to be zeroized. `write_env` intentionally writes plaintext to the `.env` file you approve. Commands may also persist credentials themselves. Completed request metadata is kept in memory for 10 minutes, and only metadata is written to the audit log.

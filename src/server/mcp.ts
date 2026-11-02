@@ -105,7 +105,9 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
       description: "Collect secret input. Use {{fieldId}} in execute stdin/env, or map fields to write_env keys. Never put secrets in args. Returns requestId and status.",
       inputSchema: requestSecretInputSchema,
       _meta: inlineEnabled ? { ui: { resourceUri: INLINE_RESOURCE_URI }, "ui/resourceUri": INLINE_RESOURCE_URI } : undefined,
-      annotations: { openWorldHint: true, destructiveHint: true },
+      // Creating the prompt does not execute its delivery. The user submits
+      // separately; submit_inline_secret retains the execution-risk hints.
+      annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -130,7 +132,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
       title: "Check a pending secure input request",
       description: "Wait for request status. Use waitSeconds=45 to avoid repeated polling.",
       inputSchema: checkRequestInputSchema,
-      annotations: { openWorldHint: false },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -164,7 +166,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
     {
       title: "SecureInput status",
       description: "Get input mode and pending request IDs.",
-      annotations: { openWorldHint: false },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (): Promise<CallToolResult> => {
       const status = await backend.status();

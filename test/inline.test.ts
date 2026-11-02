@@ -111,7 +111,7 @@ test("inline MCP form encrypts values; execution completes without returning out
   } finally { await connection.close(); await server.close(); }
 });
 
-test("opt-in and host capabilities gate inline input; unsupported hosts keep browser fallback", async () => {
+test("input preference and host capabilities select inline or browser fallback", async () => {
   for (const [mode, supportsApps] of [["browser", true], ["inline", false]] as const) {
     const server = await startTestServer({ inputMode: mode });
     const connection = await connect(server, supportsApps);
@@ -198,15 +198,16 @@ test("expiry and denial revoke inline keys; return delivery cannot create an inl
   } finally { await server.close(); }
 });
 
-test("old config defaults to browser mode and setting persists", async () => {
+test("new and legacy configs default to inline; an explicit browser preference persists", async () => {
   const server = await startTestServer();
   try {
     const legacy = JSON.parse(await readFile(server.config.configPath, "utf8"));
     delete legacy.inputMode;
     await writeFile(server.config.configPath, JSON.stringify(legacy), { mode: 0o600 });
-    assert.equal(loadConfig({ home: server.home }).inputMode, "browser");
-    loadConfig({ home: server.home, inputMode: "inline" });
+    assert.equal(loadConfig({ home: path.join(server.home, "fresh-config") }).inputMode, "inline");
     assert.equal(loadConfig({ home: server.home }).inputMode, "inline");
+    loadConfig({ home: server.home, inputMode: "browser" });
+    assert.equal(loadConfig({ home: server.home }).inputMode, "browser");
   } finally { await server.close(); }
 });
 

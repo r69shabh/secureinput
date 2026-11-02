@@ -105,7 +105,7 @@ export async function runStdioMcp(options: RemoteBackendOptions): Promise<void> 
     clientName: options.clientName,
     clientVersion: options.clientVersion,
     sessionId: randomUUID(),
-  }, { inlineEnabled: options.inputMode === "inline" });
+  }, { inlineEnabled: options.inputMode !== "browser" });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

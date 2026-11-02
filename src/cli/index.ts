@@ -126,7 +126,7 @@ program
   .command("settings")
   .description("Show or change the input preference; restart the daemon and reconnect MCP clients after changes")
   .option("--home <path>", "SecureInput config directory")
-  .addOption(new Option("--input-mode <mode>", "browser (default) or encrypted inline input").choices(["browser", "inline"]))
+  .addOption(new Option("--input-mode <mode>", "inline (default, with browser fallback) or browser-only input").choices(["browser", "inline"]))
   .action((options: { home?: string; inputMode?: "browser" | "inline" }) => {
     const config = loadConfig({ home: options.home, inputMode: options.inputMode });
     console.log(`Input mode: ${config.inputMode}`);

@@ -15,7 +15,7 @@ const configFileSchema = z.object({
   allowReturn: z.boolean(),
   openBrowser: z.boolean(),
   audit: z.boolean(),
-  inputMode: z.enum(["browser", "inline"]).default("browser"),
+  inputMode: z.enum(["browser", "inline"]).default("inline"),
 });
 
 export type SecureInputConfigFile = z.infer<typeof configFileSchema>;
@@ -87,7 +87,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): SecureInputConfig {
       allowReturn: overrides.allowReturn ?? false,
       openBrowser: overrides.openBrowser ?? true,
       audit: overrides.audit ?? true,
-      inputMode: overrides.inputMode ?? "browser",
+      inputMode: overrides.inputMode ?? "inline",
     };
     saveConfigFile(configPath, file);
   }
