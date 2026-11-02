@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/web/*"]
+    }
+  },
+  "include": [
+    "src/server/**/*.ts",
+    "src/cli/**/*.ts",
+    "src/mcp/**/*.ts",
+    "src/shared/**/*.ts",
+    "test/**/*.ts",
+    "tsup.config.ts"
+  ]
+}

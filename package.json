@@ -1,0 +1,86 @@
+{
+  "name": "secureinput",
+  "version": "0.1.0",
+  "description": "Secure secret input for AI coding agents over MCP. Enter API keys in a local shadcn UI; deliver them to commands or .env files without putting them in the chat.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "secure-input",
+    "secrets",
+    "api-keys",
+    "ai-agents",
+    "coding-agents",
+    "claude-code",
+    "cursor",
+    "codex",
+    "shadcn",
+    "local-first",
+    "security"
+  ],
+  "homepage": "https://github.com/r69shabh/secureinput#readme",
+  "bugs": {
+    "url": "https://github.com/r69shabh/secureinput/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/r69shabh/secureinput.git"
+  },
+  "license": "MIT",
+  "author": "SecureInput contributors",
+  "type": "module",
+  "bin": {
+    "secureinput": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run build:web && tsx src/cli/index.ts serve --no-open",
+    "dev:server": "tsx watch src/cli/index.ts serve --no-open",
+    "dev:web": "vite",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsup",
+    "build:web": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:watch": "node --import tsx --test --watch test/*.test.ts",
+    "start": "node dist/cli/index.js serve",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cn": "^0.5.2",
+    "commander": "^14.0.0",
+    "express": "^5.1.0",
+    "lucide-react": "^0.468.0",
+    "open": "^10.1.0",
+    "radix-ui": "^1.8.1",
+    "re2js": "^2.9.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "tailwindcss": "^4.1.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.0",
+    "tw-animate-css": "^1.3.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,490 @@
+# SecureInput: secure secret input for AI coding agents (MCP)
+
+**Stop pasting API keys, passwords, and tokens into your coding agent's chat.** SecureInput is a local-first MCP server with a small browser input box. The agent asks for a secret, you type it into a page on your own machine, and SecureInput delivers it straight to the command or `.env` file you approved. The agent gets status and redacted output, not the secret.
+
+Works with Claude Code, Cursor, Codex CLI, VS Code / GitHub Copilot, Windsurf, Cline, and any other MCP client. macOS, Linux, and Node.js 22+.
+
+```
+agent: "I need a GitHub token to create the repo."
+        │
+        ▼
+  request_secret (MCP)
+        │
+        ▼
+  SecureInput daemon on 127.0.0.1
+        │
+        ├── browser input box ──► you paste the token
+        │
+        ├── execute: gh auth login --with-token   (token via stdin, never argv)
+        └── write_env: .env.local                 (atomic, 0600)
+        │
+        ▼
+agent: { "ok": true, "status": "completed", "stdout": "[REDACTED]" }
+```
+
+## Why this exists
+
+Coding agents constantly need credentials. The usual options are bad:
+
+| Approach | What goes wrong |
+| --- | --- |
+| Paste the key into chat | It enters the model context, transcript, logs, and possibly telemetry. |
+| Agent prints a terminal command | You have to run it manually; the key can end up in shell history or `ps`. |
+| Type it into a terminal prompt | Fine, but repetitive, easy to mistype, and impossible for remote or headless agents. |
+| Commit a `.env` by hand | Easy to get wrong permissions, duplicate keys, or commit the file. |
+
+SecureInput sits between the agent and the credential. The secret moves from your browser to the approved destination inside one local process. It is never an MCP tool result by default.
+
+## Features
+
+- **MCP-native** — one tool, `request_secret`, plus polling, cancellation, and status tools.
+- **Local only** — binds to `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
+- **No secret in chat** — the agent receives request status and redacted stdout/stderr.
+- **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
+- **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env*` only.
+- **Human approval** — the UI shows which agent, working directory, command, file, and keys are involved, with extra confirmation for risky destinations.
+- **One-time requests** — pending requests expire, results are short-lived, and a submission can only be claimed once.
+- **Defense in depth** — RE2-safe validation patterns, value/output size caps, ANSI stripping, output redaction, audit metadata without values.
+- **Small shadcn/ui frontend** — the UI is intentionally boring: pairing, a request list, a form, and a result.
+- **Opt-in return mode** — for clients that truly need the value back; disabled by default and clearly marked dangerous.
+
+## Requirements
+
+- Node.js 22 or newer
+- macOS or Linux (Windows is supported in code but not yet covered by CI)
+- A browser on the same machine
+
+## Quick start from source
+
+The npm package is not published yet. Install from this repository:
+
+```bash
+git clone https://github.com/r69shabh/secureinput.git
+cd secureinput
+npm ci
+npm run build
+npm link          # puts `secureinput` on your PATH
+```
+
+Start the daemon and pair your browser:
+
+```bash
+secureinput serve
+```
+
+The pairing URL opens automatically. If it does not, run:
+
+```bash
+secureinput pair
+```
+
+You can also check that everything is healthy:
+
+```bash
+secureinput status
+secureinput doctor
+```
+
+The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinput/` with mode `0600`.
+
+> `npm link` is just for local use. `npm install -g .` or an absolute path to `dist/cli/index.js` works too.
+
+## Connect your coding agent
+
+SecureInput runs as a stdio MCP bridge. The first client that needs it auto-starts the shared daemon; you only pair the browser once.
+
+### Claude Code
+
+```bash
+claude mcp add secureinput -- secureinput mcp
+```
+
+### Cursor
+
+Add to `~/.cursor/mcp.json` (or the project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "secureinput": {
+      "command": "secureinput",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.secureinput]
+command = "secureinput"
+args = ["mcp"]
+```
+
+### VS Code / GitHub Copilot
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "secureinput": {
+      "type": "stdio",
+      "command": "secureinput",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Any MCP client
+
+Use a stdio server with command `secureinput` and argument `mcp`.
+
+```json
+{
+  "mcpServers": {
+    "secureinput": {
+      "command": "secureinput",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+If the executable is not on `PATH`, use the absolute path to `dist/cli/index.js`:
+
+```json
+{
+  "mcpServers": {
+    "secureinput": {
+      "command": "node",
+      "args": ["/absolute/path/to/secureinput/dist/cli/index.js", "mcp"]
+    }
+  }
+}
+```
+
+Add an instruction like this to your agent rules so it reaches for the tool instead of asking for a pasted key:
+
+```text
+When you need an API key, password, or token, call the SecureInput MCP tool
+request_secret. Do not ask me to paste secrets into chat. Prefer delivery
+mode "execute" with the secret in stdin/env, or "write_env" for .env files.
+```
+
+## MCP tools
+
+### `request_secret`
+
+Creates a secure input request and optionally waits for the user.
+
+```json
+{
+  "title": "GitHub CLI login",
+  "description": "Authenticate gh so I can create and push the repository.",
+  "fields": [
+    {
+      "id": "token",
+      "label": "GitHub token",
+      "description": "A fine-grained token with repo access.",
+      "type": "password",
+      "minLength": 20
+    }
+  ],
+  "delivery": {
+    "mode": "execute",
+    "command": "gh",
+    "args": ["auth", "login", "--with-token"],
+    "stdin": "{{token}}",
+    "timeoutSeconds": 60
+  },
+  "waitSeconds": 30
+}
+```
+
+Fields:
+
+- `title` — short request name, max 100 characters.
+- `description` — why the secret is needed, max 1000 characters.
+- `cwd` — optional working directory; must resolve inside an allowed root.
+- `fields` — 1–10 inputs. Each has `id`, `label`, optional `description`, `type` (`password` or `text`), `placeholder`, `minLength`, `maxLength`, `pattern` (RE2), `required`, `sensitive`, and `autocomplete`.
+- `delivery` — `execute`, `write_env`, or `return` (disabled by default).
+- `timeoutSeconds` — request lifetime, 30–900 seconds. Default 300.
+- `waitSeconds` — how long this tool call blocks, 0–240 seconds. Default 30.
+
+If the user has not submitted within `waitSeconds`, the result is `{ "pending": true }`. Call `check_secret_request` with the returned request ID.
+
+### `check_secret_request`
+
+Long-polls an existing request. Waits up to 45 seconds.
+
+```json
+{ "requestId": "req_…", "waitSeconds": 30 }
+```
+
+### `cancel_secret_request`
+
+Cancels a request that is still pending.
+
+```json
+{ "requestId": "req_…" }
+```
+
+### `secureinput_status`
+
+Returns daemon policy version, allowed roots, return-mode state, and pending requests.
+
+## Delivery modes
+
+### `execute` — run a command with the secret
+
+```json
+{
+  "mode": "execute",
+  "command": "gh",
+  "args": ["auth", "login", "--with-token"],
+  "cwd": ".",
+  "stdin": "{{token}}",
+  "env": {},
+  "timeoutSeconds": 120
+}
+```
+
+- The command is spawned directly with `shell: false`. There is no shell interpolation by SecureInput.
+- Secret fields can appear in `stdin` or `env` values as `{{fieldId}}`. They cannot appear in `command` or `args`, so they never show up in the process list.
+- Non-sensitive `text` fields may be used in `args` for things like usernames.
+- At least one secret reference must go through `stdin` or `env`.
+- stdout and stderr are ANSI-stripped, size-capped, and redacted before the agent sees them.
+- The process group is terminated on timeout.
+- Commands must be non-interactive. TTY-only login flows are not supported; use the tool's token/non-interactive mode instead.
+
+### `write_env` — write a `.env` file
+
+```json
+{
+  "mode": "write_env",
+  "path": ".env.local",
+  "mapping": {
+    "secret": "STRIPE_SECRET_KEY"
+  },
+  "overwrite": false
+}
+```
+
+- Only `.env` and `.env.*` files are allowed, and names containing `example`, `sample`, `template`, `dist`, `defaults`, or `schema` are rejected. Script-like names such as `.envrc` are not accepted.
+- The parent directory must exist and resolve inside an allowed root.
+- Symlinks are rejected.
+- Existing keys require `overwrite: true`; the UI adds a separate overwrite confirmation.
+- Writes are atomic and the resulting file gets mode `0600`. Existing comments, `export` prefixes, quoting style, and line endings are preserved.
+- Files larger than 1 MiB are refused.
+
+### `return` — hand the secret back to the agent (dangerous)
+
+Disabled by default. Start the daemon with `--allow-return` to enable it:
+
+```bash
+secureinput serve --allow-return
+```
+
+The setting is persisted in the config file. Return mode puts the secret in the model context and transcript. Use it only when `execute` and `write_env` cannot solve the problem.
+
+## What the agent sees
+
+A completed `execute` request looks like this:
+
+```json
+{
+  "ok": true,
+  "pending": false,
+  "request": {
+    "id": "req_…",
+    "status": "completed",
+    "result": {
+      "ok": true,
+      "status": "completed",
+      "message": "Command completed successfully.",
+      "execution": {
+        "exitCode": 0,
+        "stdout": "[REDACTED]",
+        "stderr": "",
+        "timedOut": false,
+        "durationMs": 842
+      }
+    }
+  }
+}
+```
+
+The secret does not appear in the tool result, the request object, the SSE stream, the audit log, or the server log.
+
+## Security model
+
+SecureInput is built for the local-desktop threat model, not for hostile multi-user hosts.
+
+**Protected by design**
+
+- Loopback-only server, with a Host-header check that rejects DNS-rebinding attempts.
+- 256-bit random MCP and pairing tokens stored in a `0600` config file.
+- Pairing token exchanged for a signed, HttpOnly, `SameSite=Strict` session cookie.
+- Same-origin checks and a custom CSRF header on state-changing browser requests.
+- Strict CSP, `frame-ancestors 'none'`, no CORS, no-store on API and HTML entry points.
+- One-time request claim, per-request TTL, pending caps, and rate limits.
+- Constant-time token comparison and pairing rate limiting.
+- RE2 validation patterns, which avoid regex denial-of-service.
+- Secrets never appear in URLs, argv, logs, audit records, or error messages.
+- Output redaction covers raw, JSON-escaped, URL-encoded, and base64 forms of each secret, plus common token formats.
+- Command execution with `shell: false`; timeout kills the process group.
+- Env writes are atomic, `0600`, symlink-safe, and confined to allowed roots.
+- Risk assessment marks shell/network/absolute-path commands, env overwrites, and return mode. High-risk requests need explicit review checkboxes.
+- Audit log records metadata and outcomes only: request ID, client, delivery destination, field names, exit code, duration.
+
+**Outside the boundary**
+
+- A command you approve can exfiltrate the secret. Reviewing the exact command and destination is the final control.
+- Same-user malware, root, a compromised browser, a malicious extension, or a keylogger can read anything you type. SecureInput does not claim to stop them.
+- Environment variables can be visible to other processes running as the same user on some systems. Prefer stdin when the command supports it.
+- Redaction is best-effort for transformed secrets (hashed, split, encrypted, or re-encoded output).
+- Pending requests and secret values live only in memory. Restarting the daemon discards them.
+- `.env` files are plaintext. SecureInput sets safe permissions but does not encrypt anything.
+
+## Configuration
+
+Default config directory: `~/.secureinput/`
+
+| File | Purpose |
+| --- | --- |
+| `config.json` | Port, tokens, allowed roots, return/audit/browser settings. Mode `0600`. |
+| `runtime.json` | Running daemon PID and port. |
+| `audit.jsonl` | Metadata-only audit trail. No secret values. |
+| `server.log` | Daemon log. No secret values. |
+
+Environment variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `SECUREINPUT_HOME` | Override the config directory. |
+| `SECUREINPUT_NO_OPEN` | Set to `1` to prevent automatic browser opening. |
+| `SECUREINPUT_WEB_DIR` | Override the built web UI directory. |
+
+Allowed roots default to your home directory. Tighten this when starting the daemon:
+
+```bash
+secureinput serve --root ~/projects
+```
+
+Repeat `--root` for multiple directories. Values are resolved and persisted on first run. Restart the daemon after changing them.
+
+## CLI reference
+
+```text
+secureinput serve [--port 4780] [--root <path>]... [--allow-return]
+                  [--no-open] [--no-audit] [--home <path>] [--web-dir <path>]
+secureinput mcp   [--home <path>] [--port <port>]
+                  [--client-name <name>] [--client-version <version>]
+secureinput pair  [--home <path>] [--port <port>] [--no-open]
+secureinput status
+secureinput stop
+secureinput doctor
+```
+
+- `serve` runs the daemon and opens the pairing page.
+- `mcp` runs the stdio bridge and auto-starts the daemon if needed.
+- `pair` starts the daemon if needed and prints a pairing URL.
+- `status` shows daemon health, policy, and pending requests.
+- `stop` stops the daemon.
+- `doctor` checks Node version, daemon reachability, and runtime PID.
+
+The MCP bridge inherits your current working directory and reports it to the daemon. That directory must be inside an allowed root; otherwise the request is rejected instead of silently falling back.
+
+## HTTP API and HTTP MCP
+
+The daemon also exposes a stateless Streamable HTTP MCP endpoint:
+
+```text
+POST http://127.0.0.1:4780/mcp
+Authorization: Bearer <mcpToken from ~/.secureinput/config.json>
+Content-Type: application/json
+```
+
+This is useful for clients or test harnesses that prefer HTTP over stdio. The endpoint uses JSON responses rather than long-lived SSE sessions. It is still loopback-only and requires the MCP token.
+
+The browser UI uses authenticated REST and SSE endpoints under `/api`. Those are implementation details and may change; the MCP tools are the stable interface.
+
+## Comparison
+
+| | Chat paste | Terminal prompt | Manual `.env` | SecureInput |
+| --- | --- | --- | --- | --- |
+| Secret enters model context | Yes | No | No | **No** (unless return mode) |
+| Secret in shell history | Maybe | Maybe | No | **No** |
+| Secret in process list | Maybe | Maybe | No | **No** |
+| Human sees destination before delivery | No | Sometimes | Yes | **Yes** |
+| Works with headless agents | Yes | No | Yes | **Yes, via MCP** |
+| Automatic `.env` writing | No | No | No | **Yes** |
+| Output redaction | No | No | No | **Yes** |
+| Local-only | No | Yes | Yes | **Yes** |
+
+## FAQ
+
+**Does the coding agent see my API key?**
+No, by default. It sees the request status, destination summary, exit code, and redacted output. Only `return` mode gives it the value, and that mode is off unless you start the daemon with `--allow-return`.
+
+**Where are secrets stored?**
+Nowhere persistent. Pending requests and submitted values live in memory and are cleared after delivery. The one exception is `write_env`, which intentionally writes the value to the `.env` file you approved. Completed request metadata is kept in memory for 10 minutes, and only metadata is written to the audit log.
+
+**Does it work with Claude Code?**
+Yes. Run `claude mcp add secureinput -- secureinput mcp`. The same stdio bridge works with Cursor, Codex CLI, VS Code Copilot, Cline, Windsurf, and other MCP clients.
+
+**Does it work with Cursor?**
+Yes. Add the `mcpServers` entry shown above to Cursor's MCP config.
+
+**Why not just use a password manager?**
+A password manager is great for humans, but it is not an MCP delivery path. SecureInput focuses on getting a secret into a specific command or env file with an auditable destination, without an agent API key.
+
+**Can the agent read my whole environment?**
+A command you approve inherits the daemon's environment plus the values you supply. That is why the UI shows the exact command and why high-risk commands need a confirmation. Use the smallest credential and the narrowest scope you can.
+
+**What happens if the daemon restarts?**
+Pending requests and completed results are lost. The agent will receive a "request not found" error and can create a new request. This is deliberate: no secret vault, no stale credentials.
+
+**Can I use it over SSH or in a dev container?**
+The daemon only listens on loopback. If your browser and agent run on the same machine, it works. For remote containers, forward the port over SSH and pair from that machine's browser session; do not expose port 4780 publicly. Remote/multi-user hosting is out of scope.
+
+**What about Windows?**
+The code handles Windows process termination and paths, but CI currently tests macOS/Linux. Treat Windows as best-effort for now.
+
+**Is the browser UI built with shadcn/ui only?**
+The UI uses shadcn/ui components, Radix primitives, Tailwind, and lucide icons. There are no third-party UI kits or external assets.
+
+## Development
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+- `npm run dev` builds the web UI and starts the daemon without opening a browser.
+- `npm run dev:web` runs Vite on port 5173 and proxies `/api` to the daemon.
+- `npm test` runs node:test unit and integration tests, including auth, CSRF, Origin/Host rejection, SSE, MCP over HTTP, one-time submit, expiry, redaction, env writes, and stdio bridge behavior.
+
+Project layout:
+
+```text
+src/shared/   schemas, validation, redaction, env parser
+src/server/   daemon, auth, policy, request service, delivery, audit
+src/mcp/      stdio bridge
+src/cli/      command-line entry point
+src/web/      React + Vite + Tailwind + shadcn/ui
+test/         node:test unit and integration tests
+```
+
+See [PLAN.md](PLAN.md) for the detailed design and threat model, [SECURITY.md](SECURITY.md) for vulnerability reporting, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
