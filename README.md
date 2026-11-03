@@ -6,7 +6,9 @@
 
 The default MCP response contains status and exit information, not the secret. The MCP bridge is designed for stdio clients such as Claude Code, Cursor, Codex, VS Code / GitHub Copilot, Windsurf, and Cline; inline display depends on the host's MCP Apps support. macOS and Linux require Node.js 22 or newer.
 
-**[Install from source](#quick-start-from-source)** · **[Connect your agent](#connect-your-coding-agent)** · **[Security model](#security-model)** · **[FAQ](#faq)**
+**[Install](#install)** · **[Connect your agent](#connect-your-coding-agent)** · **[Security and trust](docs/security-model.md)** · **[FAQ](#faq)**
+
+[Watch the 20-second illustrated overview](docs/media/secureinput-overview.mp4) · [Run the real widget with a fake key](#browser-or-inline-input)
 
 ```
 agent: "I need a GitHub token to create the repo."
@@ -58,7 +60,17 @@ SecureInput provides a separate input path for the credential. By default it doe
 - macOS or Linux (Windows is supported in code but not yet covered by CI)
 - An MCP Apps-compatible host, or a browser on the same machine for fallback
 
-## Quick start from source
+## Install
+
+### Claude Desktop: download the bundle
+
+1. Download `secureinput-release-0.1.0.mcpb` from [GitHub Releases](https://github.com/r69shabh/secureinput/releases/tag/v0.1.0). This bundle is unsigned; review the source and release before installing it.
+2. In Claude Desktop, open **Settings → Desktop app → Manage** next to Extensions (or **Settings → Extensions** in older versions), then **Advanced settings → Install Extension…** and select the downloaded file. Availability can depend on your organization's settings. See [Claude's installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+3. Check that SecureInput is connected in Claude's connectors or extensions settings, then ask for a test using a **fake** key. Inline input depends on host support; otherwise use the paired local browser.
+
+The bundle requires a Node.js 22-compatible runtime and supports macOS and Linux. This is a directly downloaded bundle, not an official Claude directory listing. To update it, download and install a newer bundle; a GitHub push does not update an installed copy automatically.
+
+### Install from source
 
 The npm package is not published. Install from this repository, or download the [MCP bundle from GitHub Releases](https://github.com/r69shabh/secureinput/releases) for an MCPB-compatible client. The bundle requires Node.js 22 or newer and is currently unsigned.
 
@@ -121,7 +133,7 @@ npm run build
 npm run demo:host
 ```
 
-Open the printed loopback URL. Enter a fake key, review the command, and submit. The reference host renders the real MCP App inside a restricted iframe; the approved Node command writes `.env.inline-demo` with mode `0600` in an isolated temporary directory. This reference host is a test fixture, not proof that a particular chat product supports inline apps. Use real credentials only in a separately evaluated host.
+Open the printed loopback URL and submit a fake key. The reference host renders the real MCP App inside a restricted iframe; the demo Node command writes `.env.inline-demo` with mode `0600` in an isolated temporary directory. The compact inline form does not display the command for review. This reference host is a test fixture, not proof that a particular chat product supports inline apps. Use real credentials only in a separately evaluated host.
 
 ## Connect your coding agent
 
@@ -132,6 +144,8 @@ SecureInput runs as a stdio MCP bridge. The first client that needs it auto-star
 ```bash
 claude mcp add secureinput -- secureinput mcp
 ```
+
+Run `claude mcp list` to check the connection. Add `--scope user` before `secureinput` if you want the configuration available across projects.
 
 ### Cursor
 
@@ -150,7 +164,14 @@ Add to `~/.cursor/mcp.json` (or the project `.cursor/mcp.json`):
 
 ### Codex CLI
 
-Add to `~/.codex/config.toml`:
+Register the server using the Codex CLI:
+
+```bash
+codex mcp add secureinput -- secureinput mcp
+codex mcp list
+```
+
+Alternatively, add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.secureinput]
@@ -343,6 +364,8 @@ The secret does not appear in the tool result, the request object, the SSE strea
 
 SecureInput is built for the local-desktop threat model, not for hostile multi-user hosts.
 
+See the [security and trust guide](docs/security-model.md) for a diagram, data locations, and a practical checklist.
+
 **Protected by design**
 
 - Loopback-only server, with a Host-header check that rejects DNS-rebinding attempts.
@@ -473,7 +496,7 @@ Pending requests and completed results are lost. The agent will receive a "reque
 The daemon only listens on loopback. If your browser and agent run on the same machine, it works. For remote containers, forward the port over SSH and pair from that machine's browser session; do not expose port 4780 publicly. Remote/multi-user hosting is out of scope.
 
 **What about Windows?**
-The code handles Windows process termination and paths, but CI currently tests macOS/Linux. Treat Windows as best-effort for now.
+The code handles Windows process termination and paths, but CI currently runs on Linux. Treat Windows as best-effort for now.
 
 **Is the browser UI built with shadcn/ui only?**
 The UI uses shadcn/ui components, Radix primitives, Tailwind, and lucide icons. There are no third-party UI kits or external assets.

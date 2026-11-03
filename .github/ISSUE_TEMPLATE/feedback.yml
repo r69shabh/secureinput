@@ -1,0 +1,26 @@
+name: Setup or usage feedback
+description: Tell us how SecureInput worked for you.
+title: "Feedback: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include API keys, pairing URLs, tokens, `.env` contents, or private logs.
+        Report security vulnerabilities privately through the repository's security advisory page instead of opening an issue.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to do?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Client, operating system, and SecureInput version
+      placeholder: e.g. Claude Desktop, macOS, v0.1.0
+  - type: textarea
+    id: experience
+    attributes:
+      label: What worked, and where did you get stuck?
+    validations:
+      required: true

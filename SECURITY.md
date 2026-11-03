@@ -44,7 +44,7 @@ Out of scope:
 - State-changing browser calls require an exact Origin match and a custom CSRF header.
 - MCP calls require a 256-bit bearer token stored in a `0600` config file.
 - Requests are one-time, TTL-bound, rate-limited, and capped.
-- Secrets are kept in memory, delivered, then removed. They are never logged.
+- Submitted values are held in memory during delivery and are not intentionally logged; JavaScript memory is not guaranteed to be zeroized. See the [security and trust guide](docs/security-model.md) for the full boundary.
 - Command execution uses `shell: false`; secret values are rejected in argv.
 - Env writes are atomic, `0600`, symlink-safe, and restricted to `.env*` files inside allowed roots.
 - Command output is withheld from agent-facing results. The paired browser can show size-capped, best-effort redacted output; audit records contain metadata only.
