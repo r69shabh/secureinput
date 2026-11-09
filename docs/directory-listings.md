@@ -8,13 +8,13 @@ Status and copy-ready text for MCP directories. Each one needs the maintainer to
 | --- | --- | --- |
 | [npm](https://www.npmjs.com/package/secureinput) | Live, 0.1.1 | `npm publish` (2FA) |
 | [Official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=secureinput) | Live, 0.1.1 (npm + mcpb) | "Publish MCP Registry listing" workflow after bumping `server.json` |
-| [HOL Guard](https://hol.org/guard/extensions) | Live (hashgraph-online/hol-guard#7094) | Claim the publisher page in Extension Studio |
+| [HOL Guard](https://hol.org/guard/extensions) | Live (hashgraph-online/hol-guard#7094); publisher page claimed by @r69shabh, launch story not yet published | Extension Studio (sign in, GitHub linked) |
 | [Claude Desktop extensions directory](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop) | Not submitted | Anthropic's extension submission form, with the `.mcpb` from the latest release |
-| [Smithery](https://smithery.ai/new) | Not submitted | Sign in with GitHub, add the repo |
-| [Glama](https://glama.ai/mcp/servers) | Indexed from GitHub; unclaimed | Sign in with GitHub to claim (`glama.json` names the maintainer) |
-| [Cursor directory](https://cursor.directory/mcp) | Not submitted | Submit form |
-| [mcp.so](https://mcp.so/submit) | Not submitted | Submit form |
-| [PulseMCP](https://www.pulsemcp.com/submit) | Not submitted | Submit form; also ingests the official registry |
+| [Smithery](https://smithery.ai) | Not available | Accounts and submissions shut down Oct 31, 2026; now a curated Arcade directory |
+| [Glama](https://glama.ai/mcp/servers/r69shabh/secureinput) | Claimed, author verified | Admin tab on the listing; a Glama release needs a Dockerfile build |
+| [Cursor directory](https://cursor.directory/plugins/secureinput) | Submitted 2026-11-09; hidden until their security scan finishes | Edit from the plugin page |
+| [mcp.so](https://mcp.so/submit) | Not submitted | Now a paid ($39) submission |
+| [PulseMCP](https://www.pulsemcp.com/submit) | Submissions paused | Will ingest the official registry when it reopens |
 
 ## Copy
 
