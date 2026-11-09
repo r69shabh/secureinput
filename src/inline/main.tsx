@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "@modelcontextprotocol/ext-apps";
+import { App, applyDocumentTheme, applyHostFonts, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps";
 import type { PublicSecretRequest } from "../shared/types";
 import { encryptInlineSubmission, INLINE_META_KEY, REQUEST_META_KEY, type InlineGrant } from "../shared/inline";
 import { validateFieldValues } from "../shared/validation";
 import "./style.css";
 
-const bridge = new App({ name: "SecureInput", version: "0.1.0" }, {}, { autoResize: false });
+const bridge = new App({ name: "SecureInput", version: "0.1.1" }, {}, { autoResize: false });
 
 function InlineInput() {
   const [request, setRequest] = useState<PublicSecretRequest | null>(null);
@@ -27,9 +27,16 @@ function InlineInput() {
       if (inline) setGrant(inline);
       if (typeof result._meta?.browserUrl === "string") setBrowserUrl(result._meta.browserUrl);
     };
+    // Adopt the host's own theme, design tokens, and fonts so the field reads
+    // as part of the chat UI. Fallbacks in style.css cover hosts that send none.
     const applyTheme = () => {
-      const theme = bridge.getHostContext()?.theme ?? "light";
+      const context = bridge.getHostContext();
+      const theme = context?.theme ?? "light";
+      applyDocumentTheme(theme);
       document.documentElement.dataset.theme = theme;
+      if (context?.styles?.variables) applyHostStyleVariables(context.styles.variables);
+      if (context?.styles?.css?.fonts) applyHostFonts(context.styles.css.fonts);
+      if (context?.platform) document.documentElement.dataset.platform = context.platform;
     };
     bridge.onhostcontextchanged = applyTheme;
     void bridge.connect().then(() => { applyTheme(); setConnected(true); }).catch(() => setError("Reconnect SecureInput to continue."));
@@ -111,21 +118,22 @@ function InlineInput() {
           <div className="input-wrap"><input id={`input-${field.id}`} type={field.type} value={values[field.id] ?? ""}
             onChange={(event) => { setValues((previous) => ({ ...previous, [field.id]: event.target.value })); setError(null); }}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void send(); } }}
+            placeholder={field.placeholder ?? "Paste value — it stays out of the chat"}
             disabled={!pending || busy} maxLength={field.maxLength ?? 8192}
             autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
             aria-invalid={Boolean(error)} aria-describedby={error ? "input-error" : undefined} />
             {done && <svg className="success-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" role="img" aria-label="Saved"><path d="m5 12 4 4L19 6" /></svg>}
             {index === request.fields.length - 1 && !done && <button className="submit-arrow" type="button" onClick={() => void send()} disabled={!pending || busy} aria-label={busy || request.status === "executing" ? "Saving" : `Submit ${field.label}`} aria-busy={busy || request.status === "executing"}>
-              {busy || request.status === "executing" ? <svg className="saving-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8" strokeOpacity=".2"/><path d="M12 4a8 8 0 0 1 8 8"/></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 10-5 5 5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>}
+              {busy || request.status === "executing" ? <svg className="saving-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8" strokeOpacity=".2"/><path d="M12 4a8 8 0 0 1 8 8"/></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>}
             </button>}
           </div>
         </div>
       </div>)}
     </form>}
-    {done && <p className="delivery-time" role="status">Saved{elapsedMs !== null ? ` · ${elapsedMs} ms` : ""}</p>}
-    {unavailable && browserUrl && <button type="button" onClick={() => void bridge.openLink({ url: browserUrl }).catch(() => setError("Run secureinput pair."))}>Open input</button>}
-    {error && <p id="input-error" role="alert">{error}</p>}
-    {request?.status === "failed" && !error && <p role="alert">Delivery failed. Check with the agent.</p>}
+    {done && <p className="note delivery-time" role="status">Saved{elapsedMs !== null ? ` · ${elapsedMs} ms` : ""}</p>}
+    {unavailable && browserUrl && <button className="open-browser" type="button" onClick={() => void bridge.openLink({ url: browserUrl }).catch(() => setError("Run secureinput pair."))}>Open input</button>}
+    {error && <p id="input-error" className="note" role="alert">{error}</p>}
+    {request?.status === "failed" && !error && <p className="note" role="alert">Delivery failed. Check with the agent.</p>}
   </main>;
 }
 

@@ -87,7 +87,7 @@ export class SecureInputService {
       allowShell: false,
       allowedRoots: this.options.policy.roots,
       maxRequestTtlSeconds: MAX_REQUEST_TTL_SECONDS,
-      version: "0.1.0",
+      version: "0.1.1",
       port: this.options.config.port,
       configPath: this.options.config.configPath,
       auditEnabled: this.options.config.audit,

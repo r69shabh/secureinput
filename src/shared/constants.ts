@@ -1,5 +1,5 @@
 export const APP_NAME = "SecureInput";
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.1.1";
 export const DEFAULT_PORT = 4780;
 export const DEFAULT_REQUEST_TTL_SECONDS = 300;
 export const MAX_REQUEST_TTL_SECONDS = 900;

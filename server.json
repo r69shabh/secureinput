@@ -2,16 +2,35 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.r69shabh/secureinput",
   "title": "SecureInput",
-  "description": "Local API key input for AI agents, with command and .env delivery.",
-  "version": "0.1.0",
+  "description": "Type API keys into a native inline input instead of the chat; delivered to a local command or .env.",
+  "version": "0.1.1",
   "websiteUrl": "https://github.com/r69shabh/secureinput#readme",
-  "repository": { "url": "https://github.com/r69shabh/secureinput", "source": "github" },
+  "repository": {
+    "url": "https://github.com/r69shabh/secureinput",
+    "source": "github"
+  },
   "packages": [
     {
+      "registryType": "npm",
+      "identifier": "secureinput",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    },
+    {
       "registryType": "mcpb",
-      "identifier": "https://github.com/r69shabh/secureinput/releases/download/v0.1.0/secureinput-release-0.1.0.mcpb",
-      "fileSha256": "22d6c9e65453f0c3940e8868605ba0e2395538a538d8ee53ca444247ad7f3a98",
-      "transport": { "type": "stdio" }
+      "identifier": "https://github.com/r69shabh/secureinput/releases/download/v0.1.1/secureinput-release-0.1.1.mcpb",
+      "fileSha256": "516ca5312db9e28152da23bfc3e626e56847b44e0ba1853a37d94a5b2f6f03f8",
+      "transport": {
+        "type": "stdio"
+      }
     }
   ]
 }

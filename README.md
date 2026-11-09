@@ -1,235 +1,171 @@
-# SecureInput — private API key input for AI coding agents
+# SecureInput
+
+**Your agent needs the token. It doesn't need to see it.**
 
 [![CI](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml/badge.svg)](https://github.com/r69shabh/secureinput/actions/workflows/ci.yml)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.r69shabh%2Fsecureinput-2F4060)](https://registry.modelcontextprotocol.io/v0/servers?search=secureinput)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2F4060)](LICENSE)
 
-**Give an AI coding agent the access it needs without pasting your API key into chat.** SecureInput is an open-source, local-first Model Context Protocol (MCP) server for API keys, passwords, and tokens. It collects input in an inline MCP App when the host supports it, or in a paired localhost browser otherwise. It can pass the value to a local command through stdin or environment variables, or write it to a `.env` file.
+SecureInput is an open-source, local-first MCP server for API keys, passwords, and tokens. When your coding agent needs a credential, you type it into a small input that appears **inside the chat**, styled like the host's own composer. The value goes straight to a local command (stdin or env) or a `.env` file. The agent only gets back `{ "ok": true, "status": "completed", "exitCode": 0 }`.
 
-The default MCP response contains status and exit information, not the secret. The MCP bridge is designed for stdio clients such as Claude Code, Cursor, Codex, VS Code / GitHub Copilot, Windsurf, and Cline; inline display depends on the host's MCP Apps support. macOS and Linux require Node.js 22 or newer.
+Works with Claude Code, Claude Desktop, Cursor, Codex, VS Code / GitHub Copilot, Windsurf, Cline, and any stdio MCP client. macOS and Linux, Node.js 22+.
 
-**[Install](#install)** · **[Connect your agent](#connect-your-coding-agent)** · **[Security and trust](docs/security-model.md)** · **[FAQ](#faq)**
-
-[Watch the 20-second illustrated overview](docs/media/secureinput-overview.mp4) · [Run the real widget with a fake key](#browser-or-inline-input)
-
-```
-agent: "I need a GitHub token to create the repo."
-        │
-        ▼
-  request_secret (MCP)
-        │
-        ▼
-  inline form in a compatible host, or paired localhost browser
-        │
-        ▼
-  SecureInput daemon on 127.0.0.1
-        ├── execute: gh auth login --with-token   (token through stdin)
-        └── write_env: .env.local                 (plaintext file, mode 0600)
-        │
-        ▼
-agent: { "ok": true, "status": "completed", "exitCode": 0 }
-```
-
-## Why this exists
-
-Coding agents constantly need credentials. The usual options are bad:
-
-| Approach | What goes wrong |
-| --- | --- |
-| Paste the key into chat | It enters the model context, transcript, logs, and possibly telemetry. |
-| Agent prints a terminal command | You have to run it manually; the key can end up in shell history or `ps`. |
-| Type it into a terminal prompt | Fine, but repetitive, easy to mistype, and impossible for remote or headless agents. |
-| Commit a `.env` by hand | Easy to get wrong permissions, duplicate keys, or commit the file. |
-
-SecureInput provides a separate input path for the credential. By default it does not return the value in the MCP tool result. The inline host, commands you run, and applications with access to a written `.env` file remain part of the trust boundary. See [Security model](#security-model).
-
-## Features
-
-- **MCP-native** — one tool, `request_secret`, plus polling, cancellation, and status tools.
-- **Local only** — binds to `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
-- **No secret in chat by default** — the agent receives request status and exit details. stdout/stderr are withheld from MCP results.
-- **Direct command execution** — no shell, secrets supplied through stdin or environment variables, never command-line arguments.
-- **Safe `.env` writes** — atomic replace, `0600` permissions, comments and line endings preserved, `.env` and `.env.*` only.
-- **Two input modes** — the compact inline form submits on Enter; the paired browser offers request details and additional confirmations for risky actions.
-- **One-time requests** — pending requests expire, results are short-lived, and a submission can only be claimed once.
-- **Defense in depth** — RE2-safe validation patterns, value/output size caps, ANSI stripping, output redaction, audit metadata without values.
-- **Small shadcn/ui frontend** — the UI is intentionally boring: pairing, a request list, a form, and a result.
-- **Opt-in return mode** — for clients that truly need the value back; disabled by default and clearly marked dangerous.
-
-## Requirements
-
-- Node.js 22 or newer
-- macOS or Linux (Windows is supported in code but not yet covered by CI)
-- An MCP Apps-compatible host, or a browser on the same machine for fallback
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Security model](docs/security-model.md)** · **[FAQ](#faq)** · [Watch the 20-second overview](docs/media/secureinput-overview.mp4)
 
 ## Install
 
-### Claude Desktop: download the bundle
+Pick your client. Every option runs `npx -y secureinput mcp` (Node.js 22+), which starts the shared local daemon on first use. Try it with a **fake** key first.
 
-1. Download `secureinput-release-0.1.0.mcpb` from [GitHub Releases](https://github.com/r69shabh/secureinput/releases/tag/v0.1.0). This bundle is unsigned; review the source and release before installing it.
-2. In Claude Desktop, open **Settings → Desktop app → Manage** next to Extensions (or **Settings → Extensions** in older versions), then **Advanced settings → Install Extension…** and select the downloaded file. Availability can depend on your organization's settings. See [Claude's installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
-3. Check that SecureInput is connected in Claude's connectors or extensions settings, then ask for a test using a **fake** key. Inline input depends on host support; otherwise use the paired local browser.
+[![Add to Cursor](https://img.shields.io/badge/Add_to-Cursor-2F4060?logo=cursor)](https://cursor.com/en/install-mcp?name=secureinput&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNlY3VyZWlucHV0IiwibWNwIl19)
+[![Install in VS Code](https://img.shields.io/badge/Install_in-VS_Code-2F4060?logo=visualstudiocode)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522secureinput%2522%252C%2522type%2522%253A%2522stdio%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522secureinput%2522%252C%2522mcp%2522%255D%257D)
+[![Download for Claude Desktop](https://img.shields.io/badge/Download_for-Claude_Desktop-2F4060?logo=anthropic)](https://github.com/r69shabh/secureinput/releases/latest)
 
-The bundle requires a Node.js 22-compatible runtime and supports macOS and Linux. This is a directly downloaded bundle, not an official Claude directory listing. To update it, download and install a newer bundle; a GitHub push does not update an installed copy automatically.
+### 1. Connect your agent
 
-### Install from source
-
-The npm package is not published. Install from this repository, or download the [MCP bundle from GitHub Releases](https://github.com/r69shabh/secureinput/releases) for an MCPB-compatible client. The bundle requires Node.js 22 or newer and is currently unsigned.
-
-```bash
-git clone https://github.com/r69shabh/secureinput.git
-cd secureinput
-npm ci
-npm run build
-npm link          # puts `secureinput` on your PATH
-```
-
-Add SecureInput to your [MCP client](#connect-your-coding-agent). The first client connection starts the local daemon automatically. To start it yourself and pair the browser fallback:
+<details open>
+<summary><b>Claude Code</b></summary>
 
 ```bash
-secureinput serve
+claude mcp add --scope user secureinput -- npx -y secureinput mcp
+claude mcp list     # secureinput: ✔ Connected
 ```
+</details>
 
-Inline requests do not open a browser. When a client needs the browser fallback, its pairing page opens automatically if browser opening is enabled. You can also open and pair it manually:
+<details open>
+<summary><b>Claude Desktop</b>: one-file bundle, no terminal</summary>
 
-```bash
-secureinput pair
-```
+1. Download the latest `secureinput-release-*.mcpb` from [GitHub Releases](https://github.com/r69shabh/secureinput/releases/latest). The bundle is unsigned; review the release before installing.
+2. Open **Settings → Desktop app → Manage** next to Extensions (older versions: **Settings → Extensions**), then **Advanced settings → Install Extension…** and pick the file. See [Claude's guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+3. Ask Claude to save a fake key with SecureInput.
 
-You can also check that everything is healthy:
+To upgrade, install the newer `.mcpb`.
+</details>
 
-```bash
-secureinput status
-secureinput doctor
-```
-
-The daemon listens on `http://127.0.0.1:4780`. The config lives in `~/.secureinput/` with mode `0600`.
-
-> `npm link` is just for local use. `npm install -g .` or an absolute path to `dist/cli/index.js` works too.
-
-## Browser or inline input
-
-When the local inline widget is rebuilt, a connected SecureInput server announces the updated resource automatically. Clients that honor MCP tool-list change notifications can use the new form for subsequent requests without reconnecting; already-open forms keep their original version. Some clients may need a reconnect if they do not refresh tool metadata. Installing this refresh capability itself requires restarting the existing MCP process once.
-
-A GitHub push does not install updates on users' computers: update the local checkout and rebuild it first. The refresh mechanism updates the widget only; changes to the running server or daemon may still require a restart. SecureInput does not silently download or execute updates.
-
-Inline input is the default on compatible MCP Apps clients. If the client cannot render it, SecureInput automatically opens paired localhost browser input. No browser is opened for supported inline requests, and Enter authorizes the requested delivery without an additional SecureInput confirmation dialog. The host may still apply its own MCP tool permissions.
-
-Existing explicit browser-only preferences are preserved. To switch an existing installation to inline-first:
-
-```bash
-secureinput settings --input-mode inline
-secureinput stop
-```
-
-Reconnect your MCP clients to apply a changed setting. Use `secureinput settings --input-mode browser` only if you want to force browser input.
-
-Inline requires a host advertising the MCP Apps HTML capability. Text-only clients automatically use the browser. Both modes deliver to the same local `execute` or `write_env` implementation. The inline form shows only the field label and a rounded outline input with an inset submit arrow. In inline mode, Enter authorizes the requested delivery, including an overwrite explicitly requested by the agent; the browser flow keeps its separate review controls. The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key. Only the daemon holds the private key. The capability and public key are supplied in widget-only tool-result metadata; the host must keep that metadata out of model context. Inline return-to-agent delivery is unsupported and uses the browser instead.
-
-The inline widget needs no direct network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys. The local browser retains a stronger boundary from the chat host. Neither mode sandboxes an approved command's filesystem or network access, and no “never trained” claim follows from merely using terminal commands.
-
-For a synthetic local test of the actual widget and terminal-to-env flow:
-
-```bash
-npm run build
-npm run demo:host
-```
-
-Open the printed loopback URL and submit a fake key. The reference host renders the real MCP App inside a restricted iframe; the demo Node command writes `.env.inline-demo` with mode `0600` in an isolated temporary directory. The compact inline form does not display the command for review. This reference host is a test fixture, not proof that a particular chat product supports inline apps. Use real credentials only in a separately evaluated host.
-
-## Connect your coding agent
-
-SecureInput runs as a stdio MCP bridge. The first client that needs it auto-starts the shared daemon; you only pair the browser once.
-
-### Claude Code
-
-```bash
-claude mcp add secureinput -- secureinput mcp
-```
-
-Run `claude mcp list` to check the connection. Add `--scope user` before `secureinput` if you want the configuration available across projects.
-
-### Cursor
-
-Add to `~/.cursor/mcp.json` (or the project `.cursor/mcp.json`):
+<details>
+<summary><b>Cursor</b>: use the button above, or <code>~/.cursor/mcp.json</code></summary>
 
 ```json
-{
-  "mcpServers": {
-    "secureinput": {
-      "command": "secureinput",
-      "args": ["mcp"]
-    }
-  }
-}
+{ "mcpServers": { "secureinput": { "command": "npx", "args": ["-y", "secureinput", "mcp"] } } }
 ```
+</details>
 
-### Codex CLI
+<details>
+<summary><b>VS Code / GitHub Copilot</b>: use the button above, or <code>.vscode/mcp.json</code></summary>
 
-Register the server using the Codex CLI:
+```json
+{ "servers": { "secureinput": { "type": "stdio", "command": "npx", "args": ["-y", "secureinput", "mcp"] } } }
+```
+</details>
+
+<details>
+<summary><b>Codex CLI</b></summary>
 
 ```bash
-codex mcp add secureinput -- secureinput mcp
-codex mcp list
+codex mcp add secureinput -- npx -y secureinput mcp
 ```
 
-Alternatively, add to `~/.codex/config.toml`:
+Or in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.secureinput]
-command = "secureinput"
-args = ["mcp"]
+command = "npx"
+args = ["-y", "secureinput", "mcp"]
 ```
+</details>
 
-### VS Code / GitHub Copilot
-
-Add to `.vscode/mcp.json`:
+<details>
+<summary><b>Windsurf, Cline, or any stdio client</b></summary>
 
 ```json
-{
-  "servers": {
-    "secureinput": {
-      "type": "stdio",
-      "command": "secureinput",
-      "args": ["mcp"]
-    }
-  }
-}
+{ "mcpServers": { "secureinput": { "command": "npx", "args": ["-y", "secureinput", "mcp"] } } }
+```
+</details>
+
+<details>
+<summary><b>Global install or from source</b></summary>
+
+```bash
+npm install -g secureinput     # then use command "secureinput", args ["mcp"]
+secureinput doctor             # checks Node, config and the daemon
 ```
 
-### Any MCP client
+From source: `git clone https://github.com/r69shabh/secureinput.git && cd secureinput && npm ci && npm run build && npm link`.
 
-Use a stdio server with command `secureinput` and argument `mcp`.
+GUI apps may not see a Node version manager's PATH (fnm, nvm, volta). If `npx` isn't found, use the full path from `realpath "$(which npx)"` as the command.
+</details>
 
-```json
-{
-  "mcpServers": {
-    "secureinput": {
-      "command": "secureinput",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+### 2. Tell your agent to use it
 
-If the executable is not on `PATH`, use the absolute path to `dist/cli/index.js`:
-
-```json
-{
-  "mcpServers": {
-    "secureinput": {
-      "command": "node",
-      "args": ["/absolute/path/to/secureinput/dist/cli/index.js", "mcp"]
-    }
-  }
-}
-```
-
-Add an instruction like this to your agent rules so it reaches for the tool instead of asking for a pasted key:
+Add this to your agent rules (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, …) so it reaches for the tool instead of asking you to paste:
 
 ```text
 When you need an API key, password, or token, call the SecureInput MCP tool
 request_secret. Do not ask me to paste secrets into chat. Prefer delivery
 mode "execute" with the secret in stdin/env, or "write_env" for .env files.
 ```
+
+## How it works
+
+```
+agent: "I need a GitHub token to create the repo."
+        │  request_secret (MCP)
+        ▼
+  input inside the chat (MCP Apps hosts)  ─or─  paired page on 127.0.0.1
+        │  encrypted to the local daemon
+        ▼
+  SecureInput daemon on 127.0.0.1
+        ├── execute:   gh auth login --with-token   (token through stdin)
+        └── write_env: .env.local                   (mode 0600)
+        │
+        ▼
+agent: { "ok": true, "status": "completed", "exitCode": 0 }
+```
+
+### Feels native in every host
+
+On hosts that support [MCP Apps](https://modelcontextprotocol.io/docs/extensions/apps), the input renders inline in the conversation and adopts the host's own theme, fonts, colours, corner radii, and focus ring from the design tokens the host provides. In Claude it looks like Claude's composer; in a dark-mode client it's dark. Hosts that send no tokens get a neutral light/dark fallback. Press Enter to submit; there is no extra SecureInput dialog.
+
+Text-only clients automatically fall back to a paired page on `127.0.0.1`, which also shows the destination and a risk review before anything runs. Force it with `secureinput settings --input-mode browser`.
+
+### What stays out of the chat
+
+| | Pasting into chat | SecureInput |
+| --- | --- | --- |
+| Model context and transcript | ✗ contains the key | ✓ status only |
+| Shell history / `ps` | often | ✓ never: stdin or env, no shell |
+| `.env` permissions | whatever you typed | ✓ atomic write, `0600` |
+| Reuse of a request | n/a | ✓ one-time, expires (5 min default) |
+
+SecureInput keeps the value out of the MCP result, but the commands you approve, the host that renders the inline form, and anything that can read a written `.env` file are still trusted. Read the [security model](docs/security-model.md) before using real credentials.
+
+## Features
+
+- **One MCP tool**: `request_secret`, plus check, cancel, and status tools.
+- **Local only**: binds `127.0.0.1`; pairing token, signed session cookie, Origin and CSRF checks.
+- **No secret in results by default**: the agent sees status and exit code; stdout/stderr are withheld.
+- **Direct execution**: no shell; secrets through stdin or env, rejected in command arguments.
+- **Safe `.env` writes**: atomic replace, `0600`, comments and line endings kept, `.env` / `.env.*` only, no overwrites unless requested.
+- **Encrypted inline submission**: AES-256-GCM, key wrapped with a fresh RSA-OAEP key pair held only by the daemon.
+- **Allowed roots**: commands and `.env` files must sit inside your allowed folders (home by default).
+- **Defense in depth**: RE2-safe patterns, size caps, ANSI stripping, output redaction, audit log without values.
+- **Opt-in return mode**: for clients that truly need the value back; off by default and marked dangerous.
+
+## Inline input details
+
+The inline form encrypts values and a one-request capability with AES-256-GCM; a fresh RSA-OAEP-SHA-256 key pair wraps the encryption key, and only the daemon holds the private key. The capability and public key travel in widget-only tool-result metadata, which the host must keep out of model context. The widget needs no network access: it submits ciphertext through the host's MCP bridge. This does **not** protect against a malicious host that alters widget code or keys; the browser mode keeps a stronger boundary from the chat host. Neither mode sandboxes an approved command.
+
+When you rebuild the widget, a connected server announces the new version; clients that honour tool-list change notifications pick it up without reconnecting. Server or daemon changes still need a restart. SecureInput never downloads or runs updates on its own.
+
+Try the real widget with a fake key in a reference host:
+
+```bash
+npm run build
+npm run demo:host
+```
+
+Open the printed loopback URL and submit a fake key. The demo writes `.env.inline-demo` with mode `0600` in a temporary directory. The reference host is a test fixture, not proof that a particular chat product supports inline apps.
+
+Useful commands: `secureinput status`, `secureinput doctor`, `secureinput pair` (browser fallback), `secureinput stop`. The daemon listens on `http://127.0.0.1:4780`; config lives in `~/.secureinput/` with mode `0600`.
 
 ## MCP tools
 

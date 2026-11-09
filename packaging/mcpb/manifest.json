@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "secureinput",
   "display_name": "SecureInput",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local secret input for AI agents: pass API keys to commands or .env files outside chat.",
   "author": { "name": "SecureInput contributors", "url": "https://github.com/r69shabh" },
   "repository": { "type": "git", "url": "https://github.com/r69shabh/secureinput" },

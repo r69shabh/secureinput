@@ -1,6 +1,6 @@
 {
   "name": "secureinput",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local MCP server for entering API keys and secrets outside AI chat and delivering them to commands or .env files.",
   "mcpName": "io.github.r69shabh/secureinput",
   "keywords": [
@@ -64,18 +64,10 @@
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.1.2",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "cn": "^0.5.2",
     "commander": "^14.0.0",
     "express": "^5.1.0",
-    "lucide-react": "^0.468.0",
     "open": "^10.1.0",
-    "radix-ui": "^1.8.1",
     "re2js": "^2.9.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "tailwind-merge": "^2.6.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -85,7 +77,15 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cn": "^0.5.2",
     "esbuild": "^0.28.2",
+    "lucide-react": "^0.468.0",
+    "radix-ui": "^1.8.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^2.6.0",
     "tailwindcss": "^4.1.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.0",
@@ -98,5 +98,8 @@
     "tsup": {
       "esbuild": "^0.28.2"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
