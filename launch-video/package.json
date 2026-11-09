@@ -1,0 +1,16 @@
+{
+  "name": "secureinput-launch-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Launch out/secureinput-launch.mp4 --codec=h264 --crf=20 --audio-codec=aac --audio-bitrate=192k",
+    "music": "python3 -I scripts/compose.py"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.540",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.540"
+  }
+}
