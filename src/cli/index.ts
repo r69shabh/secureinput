@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
 import { Command, Option } from "commander";
 import open from "open";
 import { APP_NAME, APP_VERSION } from "../shared/constants";
@@ -124,12 +125,25 @@ program
 
 program
   .command("settings")
-  .description("Show or change the input preference; restart the daemon and reconnect MCP clients after changes")
+  .description("Show or change local input and workspace settings")
   .option("--home <path>", "SecureInput config directory")
+  .option("--add-root <path>", "allow an existing workspace directory without replacing other roots (repeatable)", collect, [])
   .addOption(new Option("--input-mode <mode>", "inline (default, with browser fallback) or browser-only input").choices(["browser", "inline"]))
-  .action((options: { home?: string; inputMode?: "browser" | "inline" }) => {
-    const config = loadConfig({ home: options.home, inputMode: options.inputMode });
+  .action((options: { home?: string; inputMode?: "browser" | "inline"; addRoot: string[] }) => {
+    const addedRoots = options.addRoot.map((dir) => {
+      const root = realpathSync(dir);
+      if (!statSync(root).isDirectory()) throw new Error(`Allowed root is not a directory: ${dir}`);
+      return root;
+    });
+    const current = loadConfig({ home: options.home });
+    const config = loadConfig({
+      home: options.home,
+      inputMode: options.inputMode,
+      roots: addedRoots.length ? [...new Set([...current.allowedRoots, ...addedRoots])] : undefined,
+    });
     console.log(`Input mode: ${config.inputMode}`);
+    console.log(`Allowed roots: ${config.allowedRoots.join(", ")}`);
+    if (addedRoots.length) console.log("Saved. The daemon reads allowed roots on the next request.");
     if (options.inputMode) console.log("Saved. Restart the daemon and reconnect MCP clients to apply.");
   });
 

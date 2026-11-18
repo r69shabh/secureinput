@@ -354,7 +354,13 @@ Allowed roots default to your home directory. Tighten this when starting the dae
 secureinput serve --root ~/projects
 ```
 
-Repeat `--root` for multiple directories. Values are resolved and persisted on first run. Restart the daemon after changing them.
+Repeat `--root` to replace the allowlist with multiple directories. To add one workspace without replacing the existing roots:
+
+```bash
+secureinput settings --add-root /absolute/path/to/project
+```
+
+Use the same `--home` as your MCP configuration if it specifies one. The daemon reads allowed roots on each new request and rechecks them at submission, so retry after saving. Changes to the input mode still require a restart. Allowed roots apply to env file destinations and command working directories.
 
 ## CLI reference
 
@@ -364,6 +370,7 @@ secureinput serve [--port 4780] [--root <path>]... [--allow-return]
 secureinput mcp   [--home <path>] [--port <port>]
                   [--client-name <name>] [--client-version <version>]
 secureinput pair  [--home <path>] [--port <port>] [--no-open]
+secureinput settings [--home <path>] [--add-root <path>]... [--input-mode <mode>]
 secureinput status
 secureinput stop
 secureinput doctor
@@ -376,7 +383,7 @@ secureinput doctor
 - `stop` stops the daemon.
 - `doctor` checks Node version, daemon reachability, and runtime PID.
 
-The MCP bridge inherits your current working directory and reports it to the daemon. That directory must be inside an allowed root; otherwise the request is rejected instead of silently falling back.
+The MCP bridge reports the directory it was launched from. For a relative destination, SecureInput uses that directory unless the request sets an absolute `cwd` inside an allowed root. If your client launches the bridge outside the current project, set the request's `cwd` to the project's absolute path or send an absolute `write_env` path. SecureInput validates the resulting destination against its allowlist before asking for the secret.
 
 ## HTTP API and HTTP MCP
 

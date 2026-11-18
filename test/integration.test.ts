@@ -9,6 +9,7 @@ import { AuditLog } from "../src/server/audit";
 import { EventBus } from "../src/server/events";
 import { SecureInputService } from "../src/server/service";
 import { requestSecretInputSchema } from "../src/shared/schemas";
+import { loadConfig } from "../src/server/config";
 
 const executeBody = (command: string, args: string[], stdin: string) => ({
   title: "Test secret",
@@ -39,6 +40,58 @@ test("disabled browser opening also applies to new requests", async () => {
     assert.deepEqual(opened, []);
   } finally {
     await testServer.close();
+  }
+});
+
+test("a blocked env destination reports how to authorize the workspace before collecting input", async () => {
+  const testServer = await startTestServer();
+  try {
+    const { fields, title, description } = executeBody(process.execPath, [], "{{token}}");
+    const response = await fetch(`${testServer.base}/api/agent/requests`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${testServer.config.mcpToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        fields, title, description, waitSeconds: 0,
+        delivery: {
+          mode: "write_env",
+          path: path.resolve(testServer.home, "..", ".env.secureinput-test"),
+          mapping: { token: "DEMO_TOKEN" },
+        },
+      }),
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json() as { error: { code: string; message: string } };
+    assert.equal(body.error.code, "env_outside_roots");
+    assert.match(body.error.message, /settings --add-root/);
+    assert.deepEqual(testServer.started.service.pending(), []);
+  } finally {
+    await testServer.close();
+  }
+});
+
+test("an explicit allowed workspace works when the MCP client starts outside it", async () => {
+  const server = await startTestServer();
+  try {
+    const { fields, title, description } = executeBody(process.execPath, [], "{{token}}");
+    const env = { mode: "write_env", path: ".env.local", mapping: { token: "DEMO_TOKEN" } };
+    const source = { via: "stdio" as const, cwd: path.dirname(server.home) };
+    const create = (delivery: unknown, cwd?: string) => server.started.service.create(
+      requestSecretInputSchema.parse({ fields, title, description, delivery, cwd, waitSeconds: 0 }),
+      source,
+    );
+    assert.throws(() => create(env), { code: "cwd_outside_roots" });
+    assert.throws(() => create({ ...env, path: path.resolve(server.home, "..", ".env.local") }), {
+      code: "env_outside_roots",
+    });
+    assert.equal(create(env, server.home).request.status, "pending");
+    assert.equal(create({ ...env, path: path.join(server.home, ".env.local") }).request.status, "pending");
+    const command = executeBody(process.execPath, [], "{{token}}").delivery;
+    assert.equal(create({ ...command, cwd: server.home }).request.status, "pending");
+  } finally {
+    await server.close();
   }
 });
 
@@ -125,6 +178,35 @@ test("explicit request cwd resolves env delivery relative to the MCP client cwd"
     assert.match(await readFile(path.join(project, ".env.local"), "utf8"), /^GEMINI_API_KEY=synthetic-key/m);
     await assert.rejects(stat(path.join(testServer.home, ".env.local")), { code: "ENOENT" });
   } finally { await testServer.close(); }
+});
+
+test("running daemon reloads workspace additions and revocations before submission", async () => {
+  const server = await startTestServer();
+  try {
+    const allowed = path.join(server.home, "allowed");
+    const added = path.join(server.home, "added");
+    await mkdir(allowed);
+    await mkdir(added);
+    const input = requestSecretInputSchema.parse({
+      title: "Fake key", description: "Synthetic workspace policy test", cwd: added, waitSeconds: 0,
+      fields: [{ id: "token", label: "Token", type: "password" }],
+      delivery: { mode: "write_env", path: ".env.local", mapping: { token: "DEMO_TOKEN" } },
+    });
+    const service = server.started.service;
+    loadConfig({ home: server.home, roots: [allowed] });
+    assert.throws(() => service.create(input, { via: "stdio", cwd: allowed }), { code: "cwd_outside_roots" });
+    loadConfig({ home: server.home, roots: [allowed, added] });
+    const request = service.create(input, { via: "stdio", cwd: allowed }).request;
+    assert.equal(service.policyInfo().allowedRoots.length, 2);
+    loadConfig({ home: server.home, roots: [allowed] });
+    assert.throws(() => service.submit(request.id, { token: "fake-key" }), { code: "env_outside_roots" });
+    await assert.rejects(stat(path.join(added, ".env.local")), { code: "ENOENT" });
+    loadConfig({ home: server.home, roots: [allowed, added] });
+    service.submit(request.id, { token: "fake-key" });
+    const result = await service.wait(request.id, 2);
+    assert.equal(result.request.status, "completed");
+    assert.match(await readFile(path.join(added, ".env.local"), "utf8"), /DEMO_TOKEN=fake-key/);
+  } finally { await server.close(); }
 });
 
 test("env write preserves comments, sets 0600, and requires overwrite confirmation", async () => {

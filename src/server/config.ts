@@ -20,6 +20,11 @@ const configFileSchema = z.object({
 
 export type SecureInputConfigFile = z.infer<typeof configFileSchema>;
 
+export function readAllowedRoots(configPath: string): string[] {
+  const file = JSON.parse(readFileSync(configPath, "utf8"));
+  return configFileSchema.pick({ allowedRoots: true }).parse(file).allowedRoots;
+}
+
 export interface SecureInputConfig extends SecureInputConfigFile {
   home: string;
   configPath: string;

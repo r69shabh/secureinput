@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import {
   MAX_PENDING_PER_CLIENT,
   MAX_PENDING_REQUESTS,
@@ -19,10 +20,10 @@ import { validateFieldValues } from "../shared/validation";
 import { sanitizeOutput } from "../shared/redaction";
 import type { AuditLog } from "./audit";
 import { RateLimiter } from "./auth";
-import type { SecureInputConfig } from "./config";
+import { readAllowedRoots, type SecureInputConfig } from "./config";
 import { executeDelivery } from "./execute";
 import { EventBus } from "./events";
-import { PolicyError, resolveCommandCwd, resolveEnvPath, type Policy } from "./policy";
+import { buildPolicy, PolicyError, resolveCommandCwd, resolveEnvPath, type Policy } from "./policy";
 import { assessRisk } from "./risk";
 import { buildDeliverySummary } from "./summary";
 import { writeEnvDelivery } from "./write-env";
@@ -44,6 +45,21 @@ interface InternalRequest {
   result?: RequestResult;
   waiters: Set<() => void>;
   purgeTimer?: NodeJS.Timeout;
+}
+
+function rethrowPolicyError(error: unknown): never {
+  if (error instanceof PolicyError) {
+    const outside = error.code === "cwd_outside_roots" || error.code === "env_outside_roots";
+    let message = error.message;
+    if (error.code === "cwd_outside_roots") {
+      message += ". If the client started outside the project, retry with the project's absolute cwd.";
+    }
+    if (outside) {
+      message += " If that project is not allowed, ask the user to add it with secureinput settings --add-root using this daemon's --home. Keep the secret out of chat.";
+    }
+    throw new ServiceError(error.code, message);
+  }
+  throw error;
 }
 
 export class ServiceError extends Error {
@@ -80,7 +96,18 @@ export class SecureInputService {
     setInterval(() => this.expireRequests(), 5000).unref();
   }
 
+  private refreshRoots(): void {
+    try {
+      const allowedRoots = readAllowedRoots(this.options.config.configPath);
+      const next = buildPolicy({ ...this.options.config, allowedRoots }, this.options.policy.daemonCwd);
+      this.options.policy.roots = next.roots;
+    } catch {
+      throw new ServiceError("workspace_policy_unavailable", "Cannot load the workspace allowlist. Fix the local SecureInput config before retrying. Keep secrets out of chat.");
+    }
+  }
+
   policyInfo(): ServerPolicyInfo {
+    this.refreshRoots();
     return {
       inputMode: this.options.config.inputMode,
       allowReturn: this.options.policy.allowReturn,
@@ -131,6 +158,7 @@ export class SecureInputService {
   }
 
   create(input: RequestSecretInput, source: RequestSource, inline = false): CreateResult {
+    this.refreshRoots();
     if (inline && (this.options.config.inputMode !== "inline" || input.delivery.mode === "return")) {
       throw new ServiceError("inline_unavailable", "Inline input is disabled or unsupported for this delivery. Use the local browser.");
     }
@@ -160,27 +188,23 @@ export class SecureInputService {
       throw new ServiceError("too_many_pending", `This agent already has ${MAX_PENDING_PER_CLIENT} pending requests. Resolve one first.`);
     }
 
-    let baseCwd = this.options.policy.daemonCwd;
-    const reportedCwd = source.cwd;
-    if (reportedCwd) {
-      try {
-        baseCwd = resolveCommandCwd(reportedCwd, this.options.policy.daemonCwd, this.options.policy);
-      } catch (error) {
-        throw new ServiceError(
-          "cwd_outside_roots",
-          error instanceof Error ? error.message : "Reported working directory is not available.",
-        );
+    const policy = this.options.policy;
+    let baseCwd: string;
+    try {
+      const delivery = input.delivery;
+      if (input.cwd && path.isAbsolute(input.cwd)) {
+        baseCwd = resolveCommandCwd(input.cwd, policy.daemonCwd, policy);
+      } else if (!input.cwd && delivery.mode === "write_env" && path.isAbsolute(delivery.path)) {
+        // resolveEnvPath below validates the destination and its real parent.
+        baseCwd = path.dirname(delivery.path);
+      } else if (!input.cwd && delivery.mode === "execute" && delivery.cwd && path.isAbsolute(delivery.cwd)) {
+        baseCwd = resolveCommandCwd(delivery.cwd, policy.daemonCwd, policy);
+      } else {
+        const launchCwd = source.cwd ? resolveCommandCwd(source.cwd, policy.daemonCwd, policy) : policy.daemonCwd;
+        baseCwd = input.cwd ? resolveCommandCwd(input.cwd, launchCwd, policy) : launchCwd;
       }
-    }
-    if (input.cwd) {
-      try {
-        baseCwd = resolveCommandCwd(input.cwd, baseCwd, this.options.policy);
-      } catch (error) {
-        throw new ServiceError(
-          "cwd_outside_roots",
-          error instanceof Error ? error.message : "Requested working directory is not available.",
-        );
-      }
+    } catch (error) {
+      rethrowPolicyError(error);
     }
 
     let commandCwd: string | undefined;
@@ -189,10 +213,18 @@ export class SecureInputService {
     let existingEnvKeys: Set<string> | undefined;
 
     if (input.delivery.mode === "execute") {
-      commandCwd = resolveCommandCwd(input.delivery.cwd, baseCwd, this.options.policy);
+      try {
+        commandCwd = resolveCommandCwd(input.delivery.cwd, baseCwd, this.options.policy);
+      } catch (error) {
+        rethrowPolicyError(error);
+      }
     }
     if (input.delivery.mode === "write_env") {
-      envPathInfo = resolveEnvPath(input.delivery.path, baseCwd, this.options.policy);
+      try {
+        envPathInfo = resolveEnvPath(input.delivery.path, baseCwd, this.options.policy);
+      } catch (error) {
+        rethrowPolicyError(error);
+      }
       if (envPathInfo.existing) {
         const file = awaitReadFileSafe(envPathInfo.path);
         existingEnvContent = file;
@@ -323,6 +355,16 @@ export class SecureInputService {
       throw new ServiceError("request_expired", "This request has expired. Ask the agent to create a new one.");
     }
 
+    this.refreshRoots();
+    try {
+      if (request.delivery.mode === "write_env") {
+        resolveEnvPath(request.delivery.path, request.baseCwd, this.options.policy);
+      } else if (request.delivery.mode === "execute") {
+        resolveCommandCwd(request.public.delivery.cwd ?? request.baseCwd, request.baseCwd, this.options.policy);
+      }
+    } catch (error) {
+      rethrowPolicyError(error);
+    }
     const validation = validateFieldValues(request.fields, rawValues);
     if (!validation.ok) {
       throw new ServiceError("validation_failed", "Check the highlighted fields and try again.", {
