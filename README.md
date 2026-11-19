@@ -288,6 +288,8 @@ The setting is persisted in the config file. Return mode puts the secret in the 
 
 MCP responses are compact, minified status objects. Full request details are sent only in widget-only `_meta`; they are not repeated in model-visible content. The inline widget does not poll while input is pending. After submission it long-polls an app-only status tool, keeping UI updates out of model context.
 
+After delivery finishes, the inline widget sends one status-only continuation message through the host's MCP Apps `ui/message` capability. It includes the request ID and outcome. Hosts control whether this starts another agent turn. If messaging is unsupported or rejected, the widget displays a continuation hint. Agents should keep waiting with `check_secret_request` while a request is pending or executing and continue the original task after completion, including when the input uses the browser fallback.
+
 A completed `execute` request looks like this:
 
 ```json

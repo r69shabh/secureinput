@@ -5,7 +5,7 @@ const response = await fetch("/demo/start", { method: "POST", headers: { "x-secu
 if (!response.ok) throw new Error("Could not start the synthetic demo.");
 const { result, html, input } = await response.json();
 const frame = document.querySelector("iframe");
-const bridge = new AppBridge(null, { name: "SecureInput local test host", version: "1" }, { serverTools: {}, openLinks: {} }, { hostContext: {
+const bridge = new AppBridge(null, { name: "SecureInput local test host", version: "1" }, { serverTools: {}, openLinks: {}, message: { text: {} } }, { hostContext: {
   theme: location.pathname === "/preview" ? "dark" : "light",
   // ?tokens=1 simulates a host that sends MCP Apps design tokens.
   ...(new URLSearchParams(location.search).has("tokens") ? { styles: { variables: {
@@ -22,6 +22,10 @@ bridge.oncalltool = async (params) => {
   return result;
 };
 bridge.onopenlink = async ({ url }) => { window.open(url, "_blank", "noopener,noreferrer"); return {}; };
+bridge.onmessage = async ({ content }) => {
+  document.querySelector("#status").textContent = content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+  return {};
+};
 bridge.oninitialized = async () => {
   await bridge.sendToolInput({ arguments: input });
   await bridge.sendToolResult(result);

@@ -58,7 +58,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
   const server = new McpServer(
     { name: "secureinput", version: APP_VERSION, title: APP_NAME },
     {
-      instructions: "For secrets use request_secret, never chat. Deliver through execute stdin/env or write_env. Check pending requests with check_secret_request. Values and command output stay local unless return mode is explicitly enabled.",
+      instructions: "For secrets use request_secret, never chat. Deliver through execute stdin/env or write_env. While status is pending or executing, keep waiting with check_secret_request until terminal. Do not end the task or ask the user to reply after entering a value. On completion, continue the original task. Values and command output stay local unless return mode is explicitly enabled.",
     },
   );
 
@@ -109,7 +109,7 @@ export function createMcpServer(backend: McpBackend, baseSource: RequestSource, 
     "request_secret",
     {
       title: "Request a secret from the user",
-      description: "Collect secret input. Use {{fieldId}} in execute stdin/env, or map fields to write_env keys. Never put secrets in args. Returns requestId and status.",
+      description: "Collect secret input. Use {{fieldId}} in execute stdin/env, or map fields to write_env keys. Never put secrets in args. If pending or executing, wait with check_secret_request until terminal, then continue the task.",
       inputSchema: requestSecretInputSchema,
       _meta: inlineEnabled ? { ui: { resourceUri }, "ui/resourceUri": resourceUri } : undefined,
       // Creating the prompt does not execute its delivery. The user submits

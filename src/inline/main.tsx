@@ -5,8 +5,10 @@ import type { PublicSecretRequest } from "../shared/types";
 import { encryptInlineSubmission, INLINE_META_KEY, REQUEST_META_KEY, type InlineGrant } from "../shared/inline";
 import { validateFieldValues } from "../shared/validation";
 import "./style.css";
+import { createCompletionNotifier } from "./completion";
 
 const bridge = new App({ name: "SecureInput", version: "0.1.1" }, {}, { autoResize: false });
+const notifyCompletion = createCompletionNotifier(bridge);
 
 function InlineInput() {
   const [request, setRequest] = useState<PublicSecretRequest | null>(null);
@@ -18,6 +20,8 @@ function InlineInput() {
   const [connected, setConnected] = useState(false);
   const submittedAt = useRef<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const submittedRequestId = useRef<string | null>(null);
+  const [continuationUnavailable, setContinuationUnavailable] = useState(false);
 
   useEffect(() => {
     bridge.ontoolresult = (result) => {
@@ -66,6 +70,13 @@ function InlineInput() {
     }
   }, [request?.status]);
 
+  useEffect(() => {
+    if (!request || submittedRequestId.current !== request.id) return;
+    void notifyCompletion(request.id, request.status).then((result) => {
+      if (result === "unavailable") setContinuationUnavailable(true);
+    });
+  }, [request?.id, request?.status]);
+
   // No polling while the user types. Only wait after a delivery has started,
   // using an app-only tool so background updates do not clutter model context.
   useEffect(() => {
@@ -91,6 +102,8 @@ function InlineInput() {
     if (!validation.ok) { setError(Object.values(validation.errors)[0] ?? "Enter a value."); return; }
     setBusy(true);
     setError(null);
+    setContinuationUnavailable(false);
+    submittedRequestId.current = request.id;
     submittedAt.current = performance.now();
     try {
       const envelope = await encryptInlineSubmission(request.id, grant, { values: validation.values });
@@ -131,6 +144,7 @@ function InlineInput() {
       </div>)}
     </form>}
     {done && <p className="note delivery-time" role="status">Saved{elapsedMs !== null ? ` · ${elapsedMs} ms` : ""}</p>}
+    {continuationUnavailable && <p className="note" role="status">Your host could not resume the agent automatically. Ask it to continue.</p>}
     {unavailable && browserUrl && <button className="open-browser" type="button" onClick={() => void bridge.openLink({ url: browserUrl }).catch(() => setError("Run secureinput pair."))}>Open input</button>}
     {error && <p id="input-error" className="note" role="alert">{error}</p>}
     {request?.status === "failed" && !error && <p className="note" role="alert">Delivery failed. Check with the agent.</p>}
