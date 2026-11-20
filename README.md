@@ -10,7 +10,13 @@ SecureInput is an open-source, local-first MCP server for API keys, passwords, a
 
 Works with Claude Code, Claude Desktop, Cursor, Codex, VS Code / GitHub Copilot, Windsurf, Cline, and any stdio MCP client. macOS and Linux, Node.js 22+.
 
-**[Install](#install)** · **[How it works](#how-it-works)** · **[Security model](docs/security-model.md)** · **[FAQ](#faq)** · [Watch the 20-second overview](docs/media/secureinput-overview.mp4)
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Security model](docs/security-model.md)** · **[FAQ](#faq)** · **[Watch the demo](#demo)**
+
+## Demo
+
+[![SecureInput launch video showing the API key problem and the local input flow](docs/media/secureinput-launch-preview.gif)](https://github.com/r69shabh/secureinput/raw/refs/heads/main/docs/media/secureinput-launch.mp4)
+
+[Watch the full 29-second launch video with audio](https://github.com/r69shabh/secureinput/raw/refs/heads/main/docs/media/secureinput-launch.mp4). Animated product walkthrough with example credentials.
 
 ## Install
 
